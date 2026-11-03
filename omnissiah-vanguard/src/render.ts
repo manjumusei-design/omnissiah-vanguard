@@ -1,6 +1,5 @@
 // Ai generated rigging for the character skeleton, reviewed by me and playtested
 
-
 import {
   BOARD_COLS,
   BOARD_ROWS,
