@@ -91,3 +91,58 @@ body {
   min-height: 118px;
 }
 
+
+.card {
+  width: 152px;
+  background: var(--bone);
+  border: 2px solid var(--dark-crimson);
+  color: var(--near-black);
+  padding: 6px 8px 8px;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.card:hover:not(.lifted) {
+  transform: translateY(-6px);
+  cursor: grabbing;
+}
+
+.card.lifted {
+  transform: translateY(-12px) scale(1.05);
+  cursor: grabbing;
+}
+
+.card .cost {
+  display: inline-block;
+  border: 1px solid var
+}
+
+.card .name {
+  font-variant: small-caps;
+  font-weight: bold;
+  margin-left: 6px;
+}
+
+.card .kind {
+  display: block;
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: var(--deep-red);
+  margin: 3px 0;
+}
+
+.card .blurb {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.3;
+  color: var(--void-dark);
+}
+
+.card.ghost {
+  position: fixed;
+  pointer-events: none;
+  opacity: 0.6;
+  z-index: 10;
+  margin: 0;
+}
