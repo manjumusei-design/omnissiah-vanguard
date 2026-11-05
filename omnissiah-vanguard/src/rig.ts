@@ -1,5 +1,4 @@
 // Ai generated rigging for the character skeleton, reviewed by me and playtested
-
 import {
   BRASS,
   DARK_CRIMSON,
@@ -13,11 +12,14 @@ import {
   TOMB_TEAL,
   VOID_DARK,
 } from './palette';
+import { loadArtImage, type ArtImage } from './assets';
 import type { Facing } from './units';
+import { PART_SIZE } from './rig';
 
-export const PART_SIZE = 32;
+export const PRIEST_SCALE = 1.3;
+export const ENEMY_SCALE = 2.5;
 
-export const UNIT_SCALE = 2;
+const ART_ROOT = '/art/processed/';
 
 export type PartName = 'head' | 'torso' | 'robes' | 'legs' | 'dendriteL' | 'dendriteR' | 'weaponArm';
 
@@ -25,17 +27,26 @@ export interface PartDef {
   anchorX: number;
   anchorY: number;
   flipForLeft: boolean;
+  image: ArtImage | null;
 }
 
 export const PARTS: Record<PartName, PartDef> = {
-  head: { anchorX: 16, anchorY: 31, flipForLeft: true },
-  torso: { anchorX: 16, anchorY: 31, flipForLeft: true },
-  robes: { anchorX: 16, anchorY: 31, flipForLeft: false },
-  legs: { anchorX: 16, anchorY: 31, flipForLeft: false },
-  dendriteL: { anchorX: 16, anchorY: 31, flipForLeft: true },
-  dendriteR: { anchorX: 16, anchorY: 31, flipForLeft: true },
-  weaponArm: { anchorX: 16, anchorY: 31, flipForLeft: true },
+  head: { anchorX: 16, anchorY: 31, flipForLeft: true, image: null },
+  torso: { anchorX: 16, anchorY: 31, flipForLeft: true, image: null },
+  robes: { anchorX: 16, anchorY: 31, flipForLeft: false, image: null },
+  legs: { anchorX: 16, anchorY: 31, flipForLeft: false, image: null },
+  dendriteL: { anchorX: 16, anchorY: 31, flipForLeft: true, image: null },
+  dendriteR: { anchorX: 16, anchorY: 31, flipForLeft: false, image: null },
+  weaponArm: { anchorX: 16, anchorY: 31, flipForLeft: true, image: null },
 };
+
+const TORSO_LIFT = 28;
+const HEAD_LIFT = 56;
+const DENDRITE_ROOT_IMG = { x: 17, y: 2 };
+const DENDRITE_ATTACH_L = { x: 12, y: -54 };
+const DENDRITE_ATTACH_R = { x: 11, y: -54 };
+const WEAPON_ROOT_IMG = {x: 4, y: 2 };
+const WEAPON_ATTACH = { x: 9, y: -54};
 
 export function drawPixelRect(
   ctx: CanvasRenderingContext2D,
@@ -175,7 +186,7 @@ function paintWeaponArm(ctx: CanvasRenderingContext2D): void {
   drawPixelRect(ctx, 26, 14, 1, 1, SIGNAL_GREEN);
 }
 
-export function loadRig(): void {
+function buildPaintedRig(): void {
   if (rig) return;
   rig = {
     head: {
@@ -196,6 +207,73 @@ export function loadRig(): void {
   };
 }
 
+export async function loadRig(): Promise<void> {
+  buildPaintedRig();
+  const [head, torso, legs, dendrite, weapon] = await Promise.all([
+    loadArtImage(ART_ROOT + 'priest-head.png'),
+    loadArtImage(ART_ROOT + 'priest-torso.png'),
+    loadArtImage(ART_ROOT + 'priest-legs.png'),
+    loadArtImage(ART_ROOT + 'priest-dendrite.png'),
+    loadArtImage(ART_ROOT + 'priest-weapon.png'),
+  ])
+  PARTS.head.image = head;
+  PARTS.torso.image = torso;
+  PARTS.legs.image = legs;
+  PARTS.dendriteL.image = dendrite;
+  PARTS.dendriteR.image = dendrite;
+  PARTS.weaponArm.image = weapon;
+  if (!head) console.log('rig: fallback to painted part head');
+  if (!torso) console.log('rig: fallback to painted part torso');
+  if (!legs) console.log('rig: fallback to painted part legs');
+  if (!dendrite) console.log('rig: fallback to painted part dendrite');
+  if (!weapon) console.log('rig: fallback to painted part weaponArm');
+}
+
+let warriorArt: ArtImage | null = null;
+let scarabArt: ArtImage | null = null;
+
+export async function loadEnemyArt(): Promise<void> {
+  const [warrior, scarab] = await Promise.all([
+    loadArtImage(ART_ROOT + 'necron-warrior.png'),
+    loadArtImage(ART_ROOT + 'scarab.png'),
+  ]);
+  warriorArt = warrior;
+  scarabArt = scarab;
+}
+
+function drawArt (
+  ctx: CanvasRenderingContext2D,
+  image: ArtImage,
+  anchorX: number,
+  anchorY: number,
+  dx: number,
+  dy: number,
+  scale: number,
+  flip = false,
+): void {
+  if (!flip) {
+    ctx.drawImage(
+      image,
+      (dx - anchorX) * scale,
+      (dy - anchorY) * scale,
+      PART_SIZE * scale,
+      PART_SIZE * scale,
+    );
+    return;
+  }
+  ctx.save();
+  ctx.translate(dx * scale, dy * scale);
+  ctx.scale(-1, 1);
+  ctx.drawImage(
+    image,
+    anchorX * scale,
+    anchorY * scale,
+    PART_SIZE * scale,
+    PART_SIZE * scale,
+  );
+  ctx.restore();
+}
+
 function drawPart(
   ctx: CanvasRenderingContext2D,
   canvas: HTMLCanvasElement,
@@ -203,29 +281,60 @@ function drawPart(
   dx: number,
   dy: number,
 ): void {
-  ctx.drawImage(
-    canvas,
-    (-anchor.anchorX + dx) * UNIT_SCALE,
-    (-anchor.anchorY + dy) * UNIT_SCALE,
-    PART_SIZE * UNIT_SCALE,
-    PART_SIZE * UNIT_SCALE,
-  );
+  drawArt(ctx, canvas, anchor.anchorX, anchor.anchorY, dx, dy, PRIEST_SCALE);
 }
 
 function drawDendrite(
   ctx: CanvasRenderingContext2D,
-  canvas: HTMLCanvasElement,
-  root: { x: number; y: number },
+  image: ArtImage,
+  pivotImg: { x: number; y: number },
+  pivotRig: { x: number; y: number },
   angle: number,
+  scale: number,
+  flip: boolean,
 ): void {
   ctx.save();
-  ctx.translate(
-    (root.x - PARTS.dendriteL.anchorX) * UNIT_SCALE,
-    (root.y - PARTS.dendriteL.anchorY) * UNIT_SCALE,
-  );
+  ctx.translate(pivotRig.x * scale, pivotRig.y * scale);
   ctx.rotate(angle);
-  ctx.drawImage(canvas, -root.x * UNIT_SCALE, -root.y * UNIT_SCALE, PART_SIZE * UNIT_SCALE, PART_SIZE * UNIT_SCALE);
+  if (flip) ctx.scale(-1, 1);
+  ctx.drawImage(
+    image,
+    -pivotImg.x * scale,
+    -pivotImg.y * scale,
+    PART_SIZE * scale,
+    PART_SIZE * scale,
+  );
   ctx.restore();
+}
+
+function drawDendrites(ctx: CanvasRenderingContext2D, phase: number): void {
+  if (!rig) throw new Error('rig not loaded');
+  const angleL = Math.sin(phase * Math.PI * 2) *WRITHE_RADIANS;
+  const angleR = Math.sin(phase * Math.PI * 2 + Math.PI / 3) * WRITHE_RADIANS;
+  const dendriteImage = PARTS.dendriteL.image;
+  if (dendriteImage) {
+    drawDendrite(ctx, dendriteImage, DENDRITE_ROOT_IMG, DENDRITE_ATTACH_L, angleL, PRIEST_SCALE, PARTS.dendriteL.flipForLeft);
+    drawDendrite(ctx, dendriteImage, DENDRITE_ROOT_IMG, DENDRITE_ATTACH_R, angleR, PRIEST_SCALE, PARTS.dendriteR.flipForLeft);
+    return;
+  }
+  drawDendrite(
+    ctx,
+    rig.dendriteL,
+    DENDRITE_L_ROOT,
+    { x: DENDRITE_L_ROOT.x - PARTS.dendriteL.anchorX, y: DENDRITE_L_ROOT.y - PARTS.dendriteL.anchorY },
+    angleL,
+    PRIEST_SCALE,
+    false,
+  );
+  drawDendrite(
+    ctx,
+    rig.dendriteR,
+    DENDRITE_R_ROOT,
+    { x: DENDRITE_R_ROOT.x - PARTS.dendriteR.anchorX, y: DENDRITE_R_ROOT.y - PARTS.dendriteR.anchorY },
+    angleR,
+    PRIEST_SCALE,
+    false,
+  );
 }
 
 export function drawRig(
@@ -248,56 +357,48 @@ export function drawRig(
   if (facing === 3) ctx.scale(-1, 1);
 
   const dendritesAfterBody = pose === 'back';
-  if (!dendritesAfterBody) {
-    drawDendrite(ctx, rig.dendriteL, DENDRITE_L_ROOT, Math.sin(phase * Math.PI * 2) * WRITHE_RADIANS);
-    drawDendrite(
-      ctx,
-      rig.dendriteR,
-      DENDRITE_R_ROOT,
-      Math.sin(phase * Math.PI * 2 + Math.PI / 3) * WRITHE_RADIANS,
-    );
+  if (!dendritesAfterBody) drawDendrites(ctx, phase);
+
+  const legsImage = PARTS.legs.image;
+  if (legsImage) {
+    drawArt(ctx, legsImage, PARTS.legs.anchorX, PARTS.legs.anchorY, 0, 0, PRIEST_SCALE, legFrame === 0);
+  } else {
+    drawPart(ctx, rig.legs[legFrame]!, PARTS.legs, 0, 0);
   }
-  drawPart(ctx, rig.legs[legFrame]!, anchor, 0, 0);
-  drawPart(ctx, rig.robes, PARTS.robes, sway, bob);
-  drawPart(ctx, rig.torso[pose], anchor, 0, bob);
-  drawPart(ctx, rig.weaponArm, anchor, 0, bob);
-  drawPart(ctx, rig.head[pose], anchor, 0, bob);
-  if (dendritesAfterBody) {
-    drawDendrite(ctx, rig.dendriteL, DENDRITE_L_ROOT, Math.sin(phase * Math.PI * 2) * WRITHE_RADIANS);
-    drawDendrite(
-      ctx,
-      rig.dendriteR,
-      DENDRITE_R_ROOT,
-      Math.sin(phase * Math.PI * 2 + Math.PI / 3) * WRITHE_RADIANS,
-    );
+
+  const torsoImage = PARTS.torso.image;
+  if (torsoImage) {
+    drawArt(ctx, torsoImage, PARTS.torso.anchorX, PARTS.torso.anchorY, sway, bob - TORSO_LIFT, PRIEST_SCALE);
+  } else {
+    drawPart(ctx, rig.robes, PARTS.robes, sway, bob);
+    drawPart(ctx, rig.torso[pose], PARTS.torso, 0, bob);
   }
+
+  const headImage = PARTS.head.image;
+  if (headImage) {
+    drawArt(ctx, headImage, PARTS.head.anchorX, PARTS.head.anchorY, 0, bob - HEAD_LIFT, PRIEST_SCALE);
+  } else {
+    drawPart(ctx, rig.head[pose], anchor, 0, bob);
+  }
+
+  const weaponImage = PARTS.weaponArm.image;
+  if (weaponImage) {
+    drawArt(
+      ctx,
+      weaponImage,
+      WEAPON_ROOT_IMG.x,
+      WEAPON_ROOT_IMG.y,
+      WEAPON_ATTACH.x,
+      WEAPON_ATTACH.y + bob,
+      PRIEST_SCALE,
+    );
+  } else {
+    drawPart(ctx, rig.weaponArm, PARTS.weaponArm, 0, bob);
+  }
+
+  if (dendritesAfterBody) drawDendrites(ctx, phase);
   ctx.restore();
 }
-
-const warriorCanvas = makeCanvas((ctx) => {
-  outlinedRect(ctx, 12, 24, 3, 5, GUNMETAL);
-  outlinedRect(ctx, 17, 24, 3, 5, GUNMETAL);
-  outlinedRect(ctx, 10, 13, 12, 11, GUNMETAL);
-  for (let ry = 15; ry <= 21; ry += 2) {
-    drawPixelRect(ctx, 11, ry, 10, 1, SLATE_DARK);
-  }
-  outlinedRect(ctx, 7, 13, 4, 4, GUNMETAL);
-  outlinedRect(ctx, 21, 13, 4, 4, GUNMETAL);
-  outlinedRect(ctx, 13, 6, 6, 7, GUNMETAL);
-  drawPixelRect(ctx, 13, 8, 6, 2, SIGNAL_GREEN);
-  drawPixelRect(ctx, 15, 8, 2, 2, PALE_GREEN);
-});
-
-const scarabCanvas = makeCanvas((ctx) => {
-  for (const lx of [11, 15, 19]) {
-    drawPixelRect(ctx, lx, 29, 1, 2, GUNMETAL);
-  }
-  outlinedRect(ctx, 11, 22, 10, 7, TOMB_TEAL);
-  drawPixelRect(ctx, 13, 23, 2, 5, SLATE_DARK);
-  drawPixelRect(ctx, 17, 23, 2, 5, SLATE_DARK);
-  drawPixelRect(ctx, 21, 23, 2, 4, GUNMETAL);
-  drawPixelRect(ctx, 22, 24, 1, 1, PALE_GREEN);
-});
 
 export function drawWarrior(
   ctx: CanvasRenderingContext2D,
@@ -309,15 +410,54 @@ export function drawWarrior(
   const fx = Math.round(footX);
   const fy = Math.round(footY);
   ctx.drawImage(
-    warriorCanvas,
-    fx + (sway - 16) * UNIT_SCALE,
-    fy - 31 * UNIT_SCALE,
-    PART_SIZE * UNIT_SCALE,
-    PART_SIZE * UNIT_SCALE,
+    warriorArt ?? rigWarriorCanvas(),
+    fx + (sway - 16) * ENEMY_SCALE,
+    fy - 31 * ENEMY_SCALE,
+    PART_SIZE * ENEMY_SCALE,
+    PART_SIZE * ENEMY_SCALE,
   );
   ctx.globalAlpha = 0.4 + 0.4 * Math.sin(phase * Math.PI * 2);
-  drawPixelRect(ctx, fx + (sway - 3) * UNIT_SCALE, fy - 23 * UNIT_SCALE, 4 * UNIT_SCALE, 2 * UNIT_SCALE, PALE_GREEN);
+  drawPixelRect(ctx, fx + (sway - 3) * ENEMY_SCALE, fy - 23 * ENEMY_SCALE, 4 * ENEMY_SCALE, 2 * ENEMY_SCALE, PALE_GREEN);
   ctx.globalAlpha = 1;
+}
+
+let warriorCanvasCache: HTMLCanvasElement | null = null;
+
+function rigWarriorCanvas(): HTMLCanvasElement {
+  if (!warriorCanvasCache) {
+    warriorCanvasCache = makeCanvas((ctx) => {
+      outlinedRect(ctx, 12, 24, 3, 5, GUNMETAL);
+      outlinedRect(ctx, 17, 24, 3, 5, GUNMETAL);
+      outlinedRect(ctx, 10, 13, 12, 11, GUNMETAL);
+      for (let ry = 15; ry <= 21; ry += 2) {
+        drawPixelRect(ctx, 11, ry, 10, 1, SLATE_DARK);
+      }
+      outlinedRect(ctx, 7, 13, 4, 4, GUNMETAL);
+      outlinedRect(ctx, 21, 13, 4, 4, GUNMETAL);
+      outlinedRect(ctx, 13, 6, 6, 7, GUNMETAL);
+      drawPixelRect(ctx, 13, 8, 6, 2, SIGNAL_GREEN);
+      drawPixelRect(ctx, 15, 8, 2, 2, PALE_GREEN);
+    });
+  }
+  return warriorCanvasCache;
+}
+
+let scarabCanvasCache: HTMLCanvasElement | null = null;
+
+function rigScarabCanvas(): HTMLCanvasElement {
+  if (!scarabCanvasCache) {
+    scarabCanvasCache = makeCanvas((ctx) => {
+      for (const lx of [11, 15, 19]) {
+        drawPixelRect(ctx, lx, 29, 1, 2, GUNMETAL);
+      }
+      outlinedRect(ctx, 11, 22, 10, 7, TOMB_TEAL);
+      drawPixelRect(ctx, 13, 23, 2, 5, SLATE_DARK);
+      drawPixelRect(ctx, 17, 23, 2, 5, SLATE_DARK);
+      drawPixelRect(ctx, 21, 23, 2, 4, GUNMETAL);
+      drawPixelRect(ctx, 22, 24, 1, 1, PALE_GREEN);
+    });
+  }
+  return scarabCanvasCache;
 }
 
 export function drawScarab(
@@ -330,13 +470,15 @@ export function drawScarab(
   const fx = Math.round(footX);
   const fy = Math.round(footY);
   ctx.drawImage(
-    scarabCanvas,
-    fx - 16 * UNIT_SCALE,
-    fy + (hover - 31) * UNIT_SCALE,
-    PART_SIZE * UNIT_SCALE,
-    PART_SIZE * UNIT_SCALE,
+    scarabArt ?? rigScarabCanvas(),
+    fx - 16 * ENEMY_SCALE,
+    fy + (hover - 31) * ENEMY_SCALE,
+    PART_SIZE * ENEMY_SCALE,
+    PART_SIZE * ENEMY_SCALE,
   );
-  ctx.globalAlpha = 0.4 + 0.4 * Math.sin(phase * Math.PI * 2);
-  drawPixelRect(ctx, fx + 6 * UNIT_SCALE, fy + (hover - 7) * UNIT_SCALE, UNIT_SCALE, UNIT_SCALE, PALE_GREEN);
-  ctx.globalAlpha = 1;
+  if (!scarabArt) {
+    ctx.globalAlpha = 0.4 + 0.4 * Math.sin(phase * Math.PI * 2);
+    drawPixelRect(ctx, fx + 6 * ENEMY_SCALE, fy + (hover - 7) * ENEMY_SCALE, ENEMY_SCALE, ENEMY_SCALE, PALE_GREEN);
+    ctx.globalAlpha = 1;
+  }
 }

@@ -18,12 +18,19 @@ import {
   VOID_DARK,
 } from './palette';
 import { TILE_H, TILE_W, toScreen, type GridPos, type ScreenPos } from './projection';
-import { drawPixelRect, drawRig, drawScarab, drawWarrior } from './rig';
+import { drawPixelRect, drawRig, drawScarab, drawWarrior, ENEMY_SCALE, PRIEST_SCALE } from './rig';
+import {
+  floorTexture,
+  wallFaceTexture,
+  wallTopTexture,
+} from './textures';
+import type { ArtImage } from './assets';
 import type { Facing, Unit } from './units';
 
 const WALL_HEIGHT = 24;
 const RAISED_HEIGHT = 10;
-const UNIT_FOOT_OFFSET = 6;
+export const PRIEST_FOOT_OFFSET = 8;
+export const ENEMY_FOOT_OFFSET = 6;
 
 export interface Camera {
   x: number;
@@ -52,9 +59,9 @@ export function tileRaise(board: TileKind[][], x: number, y: number): number {
   return 0;
 }
 
-export function tileFoot(board: TileKind[][], g: GridPos): ScreenPos {
+export function tileFoot(board: TileKind[][], g: GridPos, footOffset: number): ScreenPos {
   const s = toScreen(g);
-  return { x: s.x, y: s.y - tileRaise(board, g.x, g.y) + UNIT_FOOT_OFFSET };
+  return { x: s.x, y: s.y - tileRaise(board, g.x, g.y) + footOffset };
 }
 
 export function createBackground(width: number, height: number): HTMLCanvasElement {
@@ -106,10 +113,87 @@ function diamondPath(ctx: CanvasRenderingContext2D, cx: number, cy: number, w = 
   ctx.closePath();
 }
 
-function drawFloorDiamond(ctx: CanvasRenderingContext2D, cx: number, cy: number, light: boolean): void {
+const TEXTURE_SIZE = 32;
+const FLOOR_SAMPLE = 64;
+const FLOOR_SAMPLE_MAX = 512 - FLOOR_SAMPLE;
+
+function floorSample(x: number, y: number): {sx: number; sy: number } {
+  return {
+    sx: (x * 53 + y * 97) % FLOOR_SAMPLE_MAX,
+    sy: (x * 31 + y * 71) % FLOOR_SAMPLE_MAX,
+  };
+}
+
+
+function diamondTransform(ctx: CanvasRenderingContext2D, cx: number, cy: number): void {
+  ctx.transform(TILE_W / 2, TILE_H / 2, -TILE_W / 2, TILE_H/2, cx, cy - TILE_H / 2);
+}
+
+function faceTransform(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  topY: number,
+  height: number,
+  side: 'left' | 'right',
+): void {
+  if (side === 'left') {
+    ctx.transform(TILE_W / 2, TILE_H / 2, 0, height, cx - TILE_W / 2, topY);
+  } else {
+    ctx.transform(TILE_W / 2, -TILE_H / 2, 0, height, cx, topY + TILE_H / 2);
+  }
+}
+
+function drawDiamondTexture(
+  ctx: CanvasRenderingContext2D,
+  image: ArtImage,
+  cx: number,
+  cy: number,
+  sx: number,
+  sy: number,
+): void {
+  ctx.save();
+  diamondTransform(ctx, cx, cy);
+  ctx.drawImage(image, sx, sy, sample, sample, 0, 0, 1, 1);
+  ctx.restore();
+}
+
+
+function drawFaceTexture(
+  ctx: CanvasRenderingContext2D,
+  image: ArtImage,
+  cx: number,
+  topY: number,
+  height: number,
+  side: 'left' | 'right',
+): void {
+  ctx.save();
+  faceTransform(ctx, cx, topY, height, side);
+  ctx.drawImage(image, 0, 0, TEXTURE_SIZE, TEXTURE_SIZE, 0, 0, 1, 1);
+  ctx.restore();
+}
+
+function drawFloorDiamond(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  light: boolean,
+  gx: number,
+  gy: number,
+): void {
+  const tex = floorTexture();
+  if (tex) {
+    const s = floorSample(gx, gy);
+    drawDiamondTexture(ctx, tex, cx, cy, s.sx, s.sy, FLOOR_SAMPLE);
+    diamondPath(ctx, cx, cy);
+    ctx.globalAlpha = light ? 0.25 : 0.45;
+    ctx.fillStyle = light ? ASH_GRAY : VOID_DARK;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  } else {
   diamondPath(ctx, cx, cy);
   ctx.fillStyle = light ? ASH_GRAY : SLATE_DARK;
   ctx.fill();
+  }
   ctx.strokeStyle = NEAR_BLACK;
   ctx.lineWidth = 1;
   ctx.stroke();
@@ -139,7 +223,13 @@ function drawBlockSides(
   ctx.lineTo(cx + TILE_W / 2, topY + height);
   ctx.closePath();
   ctx.fill();
-}
+
+const face = wallFaceTexture();
+if (face) {
+    drawFaceTexture(ctx, face, cx, topY, height, 'left');
+    drawFaceTexture(ctx, face, cx, topY, height, 'right');
+  }
+
 
 function drawTile(
   ctx: CanvasRenderingContext2D,
@@ -157,11 +247,15 @@ function drawTile(
   const light = (x + y) % 2 === 0;
 
   switch (kind) {
-    case 'wall':
+    case 'wall': {
       drawBlockSides(ctx, cx, cy, WALL_HEIGHT);
+      const top = wallTopTexture();
+      if (top) drawDiamondTexture(ctx, top, cx, topCy, 0, 0, TEXTURE_SIZE);
       diamondPath(ctx, cx, topCy);
-      ctx.fillStyle = GUNMETAL;
-      ctx.fill();
+      if (!top) {
+        ctx.fillStyle = GUNMETAL;
+        ctx.fill();
+      }
       ctx.strokeStyle = NEAR_BLACK;
       ctx.lineWidth = 1;
       ctx.stroke();
@@ -169,15 +263,16 @@ function drawTile(
       ctx.strokeStyle = SLATE_DARK;
       ctx.stroke();
       break;
+    }
     case 'raised':
       drawBlockSides(ctx, cx, cy, RAISED_HEIGHT);
-      drawFloorDiamond(ctx, cx, topCy, light);
+      drawFloorDiamond(ctx, cx, topCy, light, x, y);
       diamondPath(ctx, cx, topCy);
       ctx.strokeStyle = BRASS;
       ctx.stroke();
       break;
     case 'hazard':
-      drawFloorDiamond(ctx, cx, topCy, light);
+      drawFloorDiamond(ctx, cx, topCy, light, x, y);
       ctx.save();
       diamondPath(ctx, cx, topCy);
       ctx.clip();
@@ -188,20 +283,20 @@ function drawTile(
       ctx.restore();
       break;
     case 'console':
-      drawFloorDiamond(ctx, cx, topCy, light);
+      drawFloorDiamond(ctx, cx, topCy, light, x, y);
       drawPixelRect(ctx, cx - 9, topCy - 15, 18, 11, NEAR_BLACK);
       drawPixelRect(ctx, cx - 8, topCy - 14, 16, 9, GUNMETAL);
       drawPixelRect(ctx, cx - 5, topCy - 12, 8, 4, SIGNAL_GREEN);
       break;
     case 'shrine':
-      drawFloorDiamond(ctx, cx, topCy, light);
+      drawFloorDiamond(ctx, cx, topCy, light, x, y);
       drawPixelRect(ctx, cx - 4, topCy - 19, 8, 27, NEAR_BLACK);
       drawPixelRect(ctx, cx - 3, topCy - 18, 6, 25, DEEP_RED);
       drawPixelRect(ctx, cx - 1, topCy - 18, 2, 25, DARK_CRIMSON);
       drawPixelRect(ctx, cx - 3, topCy + 4, 6, 2, NEAR_BLACK);
       break;
     case 'floor':
-      drawFloorDiamond(ctx, cx, topCy, light);
+      drawFloorDiamond(ctx, cx, topCy, light, x, y);
       break;
   }
 }
@@ -242,14 +337,14 @@ function parseKey(key: string): GridPos {
   return { x: Number(xs), y: Number(ys) };
 }
 
-const SHADOW_RX = 22;
-const SHADOW_RY = 10;
+const SHADOW_RX = 11;
+const SHADOW_RY = 5;
 
 function drawShadow(ctx: CanvasRenderingContext2D, x: number, y: number): void {
   ctx.globalAlpha = 0.4;
   ctx.fillStyle = NEAR_BLACK;
   ctx.beginPath();
-  ctx.ellipse(x, y + 3, SHADOW_RX, SHADOW_RY, 0, 0, Math.PI * 2);
+  ctx.ellipse(x, y + 1.5 * scale, SHADOW_RX * scale, SHADOW_RY * scale, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.globalAlpha = 1;
 }
@@ -262,13 +357,13 @@ function drawUnits(ctx: CanvasRenderingContext2D, scene: Scene, camera: Camera):
     if (unit.kind === 'techpriest') {
       const px = scene.playerScreen.x + camera.x;
       const py = scene.playerScreen.y + camera.y;
-      drawShadow(ctx, px, py);
+      drawShadow(ctx, px, py, PRIEST_SCALE);
       drawRig(ctx, px, py, scene.playerFacing, scene.playerPhase, scene.playerMoving);
       continue;
     }
-    const foot = tileFoot(scene.board, unit.pos);
+    const foot = tileFoot(scene.board, unit.pos, ENEMY_FOOT_OFFSET);
     const phase = (scene.time * 0.5 + unit.pos.x * 0.37 + unit.pos.y * 0.53) % 1;
-    drawShadow(ctx, foot.x + camera.x, foot.y + camera.y);
+    drawShadow(ctx, foot.x + camera.x, foot.y + camera.y, ENEMY_SCALE);
     if (unit.kind === 'warrior') {
       drawWarrior(ctx, foot.x + camera.x, foot.y + camera.y, phase);
     } else {
