@@ -1,5 +1,3 @@
-// Ai generated rigging for the character skeleton, reviewed by me and playtested
-
 import {
   BOARD_COLS,
   BOARD_ROWS,
@@ -29,6 +27,7 @@ import type { Facing, Unit } from './units';
 
 const WALL_HEIGHT = 24;
 const RAISED_HEIGHT = 10;
+
 export const PRIEST_FOOT_OFFSET = 8;
 export const ENEMY_FOOT_OFFSET = 6;
 
@@ -40,7 +39,7 @@ export interface Camera {
 export interface Scene {
   board: TileKind[][];
   units: Unit[];
-  thread: Set<string>;
+  threat: Set<string>;
   showThreat: boolean;
   reachable: Set<string>;
   playerScreen: ScreenPos;
@@ -117,16 +116,15 @@ const TEXTURE_SIZE = 32;
 const FLOOR_SAMPLE = 64;
 const FLOOR_SAMPLE_MAX = 512 - FLOOR_SAMPLE;
 
-function floorSample(x: number, y: number): {sx: number; sy: number } {
+function floorSample(x: number, y: number): { sx: number; sy: number } {
   return {
     sx: (x * 53 + y * 97) % FLOOR_SAMPLE_MAX,
     sy: (x * 31 + y * 71) % FLOOR_SAMPLE_MAX,
   };
 }
 
-
 function diamondTransform(ctx: CanvasRenderingContext2D, cx: number, cy: number): void {
-  ctx.transform(TILE_W / 2, TILE_H / 2, -TILE_W / 2, TILE_H/2, cx, cy - TILE_H / 2);
+  ctx.transform(TILE_W / 2, TILE_H / 2, -TILE_W / 2, TILE_H / 2, cx, cy - TILE_H / 2);
 }
 
 function faceTransform(
@@ -150,13 +148,13 @@ function drawDiamondTexture(
   cy: number,
   sx: number,
   sy: number,
+  sample: number,
 ): void {
   ctx.save();
   diamondTransform(ctx, cx, cy);
   ctx.drawImage(image, sx, sy, sample, sample, 0, 0, 1, 1);
   ctx.restore();
 }
-
 
 function drawFaceTexture(
   ctx: CanvasRenderingContext2D,
@@ -190,9 +188,9 @@ function drawFloorDiamond(
     ctx.fill();
     ctx.globalAlpha = 1;
   } else {
-  diamondPath(ctx, cx, cy);
-  ctx.fillStyle = light ? ASH_GRAY : SLATE_DARK;
-  ctx.fill();
+    diamondPath(ctx, cx, cy);
+    ctx.fillStyle = light ? ASH_GRAY : SLATE_DARK;
+    ctx.fill();
   }
   ctx.strokeStyle = NEAR_BLACK;
   ctx.lineWidth = 1;
@@ -224,12 +222,12 @@ function drawBlockSides(
   ctx.closePath();
   ctx.fill();
 
-const face = wallFaceTexture();
-if (face) {
+  const face = wallFaceTexture();
+  if (face) {
     drawFaceTexture(ctx, face, cx, topY, height, 'left');
     drawFaceTexture(ctx, face, cx, topY, height, 'right');
   }
-
+}
 
 function drawTile(
   ctx: CanvasRenderingContext2D,
@@ -340,7 +338,7 @@ function parseKey(key: string): GridPos {
 const SHADOW_RX = 11;
 const SHADOW_RY = 5;
 
-function drawShadow(ctx: CanvasRenderingContext2D, x: number, y: number): void {
+function drawShadow(ctx: CanvasRenderingContext2D, x: number, y: number, scale: number): void {
   ctx.globalAlpha = 0.4;
   ctx.fillStyle = NEAR_BLACK;
   ctx.beginPath();
