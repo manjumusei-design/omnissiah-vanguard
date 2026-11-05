@@ -40,7 +40,7 @@ export interface Scene {
   playerFacing: Facing;
   playerPhase: number;
   playerMoving: boolean;
-  flashTIle: string | null;
+  flashTile: string | null;
   flashAge: number;
   time: number;
 }
