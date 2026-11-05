@@ -1,16 +1,18 @@
 import { BOARD_COLS, BOARD_ROWS, isBlocked, makeDemoBoard } from './board';
 import { CARDS } from './cards';
-import { loadRig } from './rig';
+import { loadEnemyArt, loadRig } from './rig';
+import { loadBoardTextures } from './textures';
 import { toGrid, toScreen, type GridPos, type ScreenPos } from './projection';
 import {
   createBackground,
   drawScene,
+  PRIEST_FOOT_OFFSET,
   tileFoot,
   type Camera,
   type Scene,
 } from './render';
 import { computeThreat, tileKey } from './threat';
-import { makeDemoUnits, type Facing } from './units';
+import { makeDemoUnits, type Facing } from './un
 import { renderHand, setEnergy } from './ui';
 
 const MOVE_RANGE = 3;
@@ -109,13 +111,17 @@ function advanceWalk(state: GameState, dt: number): void {
   }
   if (state.walkStep >= state.walkPath.length) {
     state.playerMoving = false;
-    state.playerScreen = tileFoot(state.board, state.playerPos);
+    state.playerScreen = tileFoot(state.board, state.playerPos, PRIEST_FOOT_OFFSET);
     computeReachable(state);
   } else {
     const target = state.walkPath[state.walkStep]!;
     state.playerFacing = facingFromStep(state.walkFrom, target);
     const t = state.walkTimer / STEP_SECONDS;
-    state.playerScreen = lerp(tileFoot(state.board, state.walkFrom), tileFoot(state.board, target), t);
+    state.playerScreen = lerp(
+      tileFoot(state.board, state.walkFrom, PRIEST_FOOT_OFFSET),
+      tileFoot(state.board, target, PRIEST_FOOT_OFFSET),
+      t,
+    );
     state.playerPhase = t;
   }
 }
@@ -173,6 +179,7 @@ computeReachable(state);
 resize();
 window.addEventListener('resize', resize);
 loadRig();
+await Promise.all([loadRig(), loadEnemyArt(), loadBoardTextures()]);
 setEnergy(state.energy, ENERGY_PER_TURN);
 
 canvas.addEventListener('pointerdown', (e) => {
