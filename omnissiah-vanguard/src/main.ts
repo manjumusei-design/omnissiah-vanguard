@@ -55,7 +55,7 @@ function lerp(a: ScreenPos, b: ScreenPos, t: number): ScreenPos {
 function computeReachable(state: GameState): void {
   const occupied = new Set(
     state.units
-    .filter((u) => u.kind !== 'techpriest')
+    .filter((u) => u.typeId !== 'techpriest')
     .map((u) => tileKey(u.pos.x, u.pos.y)),
   );
   const paths = new Map<string, GridPos[]>();
@@ -172,7 +172,7 @@ state.playerPos = { ...state.units[0]!.pos };
 state.playerScreen = tileFoot(state.board, state.playerPos);
 state.threat = computeThreat(
   state.board,
-  state.units.filter((u) => u.kind !== 'techpriest').map((u) => u.pos),
+  state.units.filter((u) => u.typeId !== 'techpriest').map((u) => u.pos),
 );
 computeReachable(state);
 

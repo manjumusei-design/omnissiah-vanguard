@@ -13,11 +13,10 @@ import {
   VOID_DARK,
 } from './palette';
 import { loadArtImage, type ArtImage } from './assets';
-import type { Facing } from './units';
-import { PART_SIZE } from './rig';
+import { ENEMY_TYPES, spriteFile, type EnemyIdle, type EnemyTypeId } from './enemies';
+import type { Facing, Unit } from './units';
 
 export const PRIEST_SCALE = 1.3;
-export const ENEMY_SCALE = 2.5;
 
 const ART_ROOT = '/art/processed/';
 
@@ -229,16 +228,42 @@ export async function loadRig(): Promise<void> {
   if (!weapon) console.log('rig: fallback to painted part weaponArm');
 }
 
-let warriorArt: ArtImage | null = null;
-let scarabArt: ArtImage | null = null;
+const SHADOW_RX = 11;
+const SHADOW_RY = 5;
+const SHADOW_DROP = 1.5;
+const SHADOW_ALPHA = 0.4;
+
+
+export function drawShadow(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  scale: number,
+  alpha: number = SHADOW_ALPHA,
+): void {
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = NEAR_BLACK;
+  ctx.beginPath();
+  ctx.ellipse(x, y + SHADOW_DROP * scale, SHADOW_RX * scale, SHADOW_RY * scale, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+const enemyArt: Record<EnemyTypeId, ArtImage | null> = {
+  scarab: null,
+  warrior: null,
+  immortal: null,
+  wraith: null,
+  sentinel: null,
+};
 
 export async function loadEnemyArt(): Promise<void> {
-  const [warrior, scarab] = await Promise.all([
-    loadArtImage(ART_ROOT + 'necron-warrior.png'),
-    loadArtImage(ART_ROOT + 'scarab.png'),
-  ]);
-  warriorArt = warrior;
-  scarabArt = scarab;
+  const ids = Object.keys(ENEMY_TYPES) as EnemyTypeId[];
+  const images = await Promise.all(ids.map((id) => loadArtImage(spriteFile(id))));
+  for (const [index, id] of ids.entries()) {
+    enemyArt[id] = images[index] ?? null;
+    if (!images[index]) console.log(`enemy art: fallback to painted sprite ${id}`);
+  }
 }
 
 function drawArt (
@@ -400,85 +425,116 @@ export function drawRig(
   ctx.restore();
 }
 
-export function drawWarrior(
+const enemyFallbackPainters: Record<EnemyTypeId, (ctx: CanvasRenderingContext2D) => void> = {
+  warrior: (ctx) => {
+    outlinedRect(ctx, 12, 24, 3, 5, GUNMETAL);
+    outlinedRect(ctx, 17, 24, 3, 5, GUNMETAL);
+    outlinedRect(ctx, 10, 13, 12, 11, GUNMETAL);
+    for (let ry = 15; ry <= 21; ry += 2) {
+      drawPixelRect(ctx, 11, ry, 10, 1, SLATE_DARK);
+    }
+    outlinedRect(ctx, 7, 13, 4, 4, GUNMETAL);
+    outlinedRect(ctx, 21, 13, 4, 4, GUNMETAL);
+    outlinedRect(ctx, 13, 6, 6, 7, GUNMETAL);
+    drawPixelRect(ctx, 13, 8, 6, 2, SIGNAL_GREEN);
+    drawPixelRect(ctx, 15, 8, 2, 2, PALE_GREEN);
+  },
+  scarab: (ctx) => {
+    for (const lx of [11, 15, 19]) {
+      drawPixelRect(ctx, lx, 29, 1, 2, GUNMETAL);
+    }
+    outlinedRect(ctx, 11, 22, 10, 7, TOMB_TEAL);
+    drawPixelRect(ctx, 13, 23, 2, 5, SLATE_DARK);
+    drawPixelRect(ctx, 17, 23, 2, 5, SLATE_DARK);
+    drawPixelRect(ctx, 21, 23, 2, 4, GUNMETAL);
+    drawPixelRect(ctx, 22, 24, 1, 1, PALE_GREEN);
+  },
+  immortal: (ctx) => {
+    outlinedRect(ctx, 11, 24, 3, 5, GUNMETAL);
+    outlinedRect(ctx, 18, 24, 3, 5, GUNMETAL);
+    outlinedRect(ctx, 10, 13, 12, 11, GUNMETAL);
+    for (let ry = 15; ry <= 21; ry += 2) {
+      drawPixelRect(ctx, 11, ry, 10, 1, SLATE_DARK);
+    }
+    outlinedRect(ctx, 7, 13, 4, 4, GUNMETAL);
+    outlinedRect(ctx, 21, 13, 4, 4, GUNMETAL);
+    outlinedRect(ctx, 13, 6, 6, 7, GUNMETAL);
+    drawPixelRect(ctx, 13, 8, 6, 2, SIGNAL_GREEN);
+    outlinedRect(ctx, 22, 17, 4, 3, TOMB_TEAL);
+    drawPixelRect(ctx, 25, 18, 2, 1, PALE_GREEN);
+  },
+  wraith: (ctx) => {
+    outlinedRect(ctx, 6, 20, 6, 5, TOMB_TEAL);
+    outlinedRect(ctx, 9, 24, 6, 5, TOMB_TEAL);
+    outlinedRect(ctx, 13, 11, 10, 10, TOMB_TEAL);
+    drawPixelRect(ctx, 15, 14, 3, 2, PALE_GREEN);
+    outlinedRect(ctx, 21, 17, 5, 3, GUNMETAL);
+    drawPixelRect(ctx, 25, 18, 2, 1, SLATE_DARK);
+  },
+  sentinel: (ctx) => {
+    for (const [lx, ly] of [[3, 18], [7, 24], [22, 24], [26, 18]] as const) {
+      outlinedRect(ctx, lx, ly, 3, 6, GUNMETAL);
+    }
+    outlinedRect(ctx, 9, 11, 14, 13, TOMB_TEAL);
+    for (let ry = 13; ry <= 21; ry += 2) {
+      drawPixelRect(ctx, 10, ry, 12, 1, SLATE_DARK);
+    }
+    drawPixelRect(ctx, 13, 14, 2, 2, PALE_GREEN);
+    drawPixelRect(ctx, 17, 14, 2, 2, PALE_GREEN);
+  },
+};
+
+const enemyFallbackCache: Partial<Record<EnemyTypeId, HTMLCanvasElement>> = {};
+
+function enemySprite(id: EnemyTypeId): ArtImage {
+  const art = enemyArt[id];
+  if (art) return art;
+  const cached = enemyFallbackCache[id];
+  if (cached) return cached;
+  const painted = makeCanvas(enemyFallbackPainters[id]);
+  enemyFallbackCache[id] = painted;
+  return painted;
+}
+
+function idleOffset(idle: EnemyIdle, phase: number): { x: number; y: number } {
+  if (idle.axis === 'none') return { x: 0, y: 0 };
+  const wave = Math.sin(phase * Math.PI * 2 * idle.cycles) * idle.amplitude;
+  return idle.axis === 'x'
+    ? { x: wave, y: 0 }
+    : { x: 0, y: -(idle.lift + wave) };
+}
+
+export function drawEnemy(
   ctx: CanvasRenderingContext2D,
+  typeId: EnemyTypeId,
   footX: number,
   footY: number,
   phase: number,
 ): void {
-  const sway = Math.round(Math.sin(phase * Math.PI * 2));
+  const type = ENEMY_TYPES[typeId];
   const fx = Math.round(footX);
   const fy = Math.round(footY);
+  drawShadow(ctx, fx, fy, type.scale * type.shadowScale, type.shadowAlpha);
+  const offset = idleOffset(type.idle, phase);
   ctx.drawImage(
-    warriorArt ?? rigWarriorCanvas(),
-    fx + (sway - 16) * ENEMY_SCALE,
-    fy - 31 * ENEMY_SCALE,
-    PART_SIZE * ENEMY_SCALE,
-    PART_SIZE * ENEMY_SCALE,
+    enemySprite(typeId),
+    fx + (offset.x - 16) * type.scale,
+    fy + (offset.y - 31) * type.scale,
+    PART_SIZE * type.scale,
+    PART_SIZE * type.scale,
   );
+  if (typeId === 'warrior') drawEyeGlow(ctx, fx, fy, offset, type.scale, phase);
+}
+
+function drawEyeGlow(
+  ctx: CanvasRenderingContext2D,
+  fx: number,
+  fy: number,
+  offset: { x: number; y: number },
+  scale: number,
+  phase: number,
+): void {
   ctx.globalAlpha = 0.4 + 0.4 * Math.sin(phase * Math.PI * 2);
-  drawPixelRect(ctx, fx + (sway - 3) * ENEMY_SCALE, fy - 23 * ENEMY_SCALE, 4 * ENEMY_SCALE, 2 * ENEMY_SCALE, PALE_GREEN);
+  drawPixelRect(ctx, fx + (offset.x - 3) * scale, fy + (offset.y - 23) * scale, 4 * scale, 2 * scale, PALE_GREEN);
   ctx.globalAlpha = 1;
-}
-
-let warriorCanvasCache: HTMLCanvasElement | null = null;
-
-function rigWarriorCanvas(): HTMLCanvasElement {
-  if (!warriorCanvasCache) {
-    warriorCanvasCache = makeCanvas((ctx) => {
-      outlinedRect(ctx, 12, 24, 3, 5, GUNMETAL);
-      outlinedRect(ctx, 17, 24, 3, 5, GUNMETAL);
-      outlinedRect(ctx, 10, 13, 12, 11, GUNMETAL);
-      for (let ry = 15; ry <= 21; ry += 2) {
-        drawPixelRect(ctx, 11, ry, 10, 1, SLATE_DARK);
-      }
-      outlinedRect(ctx, 7, 13, 4, 4, GUNMETAL);
-      outlinedRect(ctx, 21, 13, 4, 4, GUNMETAL);
-      outlinedRect(ctx, 13, 6, 6, 7, GUNMETAL);
-      drawPixelRect(ctx, 13, 8, 6, 2, SIGNAL_GREEN);
-      drawPixelRect(ctx, 15, 8, 2, 2, PALE_GREEN);
-    });
-  }
-  return warriorCanvasCache;
-}
-
-let scarabCanvasCache: HTMLCanvasElement | null = null;
-
-function rigScarabCanvas(): HTMLCanvasElement {
-  if (!scarabCanvasCache) {
-    scarabCanvasCache = makeCanvas((ctx) => {
-      for (const lx of [11, 15, 19]) {
-        drawPixelRect(ctx, lx, 29, 1, 2, GUNMETAL);
-      }
-      outlinedRect(ctx, 11, 22, 10, 7, TOMB_TEAL);
-      drawPixelRect(ctx, 13, 23, 2, 5, SLATE_DARK);
-      drawPixelRect(ctx, 17, 23, 2, 5, SLATE_DARK);
-      drawPixelRect(ctx, 21, 23, 2, 4, GUNMETAL);
-      drawPixelRect(ctx, 22, 24, 1, 1, PALE_GREEN);
-    });
-  }
-  return scarabCanvasCache;
-}
-
-export function drawScarab(
-  ctx: CanvasRenderingContext2D,
-  footX: number,
-  footY: number,
-  phase: number,
-): void {
-  const hover = Math.round(Math.sin(phase * Math.PI * 2)) - 1;
-  const fx = Math.round(footX);
-  const fy = Math.round(footY);
-  ctx.drawImage(
-    scarabArt ?? rigScarabCanvas(),
-    fx - 16 * ENEMY_SCALE,
-    fy + (hover - 31) * ENEMY_SCALE,
-    PART_SIZE * ENEMY_SCALE,
-    PART_SIZE * ENEMY_SCALE,
-  );
-  if (!scarabArt) {
-    ctx.globalAlpha = 0.4 + 0.4 * Math.sin(phase * Math.PI * 2);
-    drawPixelRect(ctx, fx + 6 * ENEMY_SCALE, fy + (hover - 7) * ENEMY_SCALE, ENEMY_SCALE, ENEMY_SCALE, PALE_GREEN);
-    ctx.globalAlpha = 1;
-  }
 }

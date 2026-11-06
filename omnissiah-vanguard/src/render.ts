@@ -16,7 +16,8 @@ import {
   VOID_DARK,
 } from './palette';
 import { TILE_H, TILE_W, toScreen, type GridPos, type ScreenPos } from './projection';
-import { drawPixelRect, drawRig, drawScarab, drawWarrior, ENEMY_SCALE, PRIEST_SCALE } from './rig';
+import { drawEnemy, drawPixelRect, drawRig, drawShadow, PRIEST_SCALE } from './rig';
+import { ENEMY_TYPES } from './enemies';
 import {
   floorTexture,
   wallFaceTexture,
@@ -29,7 +30,6 @@ const WALL_HEIGHT = 24;
 const RAISED_HEIGHT = 10;
 
 export const PRIEST_FOOT_OFFSET = 8;
-export const ENEMY_FOOT_OFFSET = 6;
 
 export interface Camera {
   x: number;
@@ -335,38 +335,23 @@ function parseKey(key: string): GridPos {
   return { x: Number(xs), y: Number(ys) };
 }
 
-const SHADOW_RX = 11;
-const SHADOW_RY = 5;
-
-function drawShadow(ctx: CanvasRenderingContext2D, x: number, y: number, scale: number): void {
-  ctx.globalAlpha = 0.4;
-  ctx.fillStyle = NEAR_BLACK;
-  ctx.beginPath();
-  ctx.ellipse(x, y + 1.5 * scale, SHADOW_RX * scale, SHADOW_RY * scale, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.globalAlpha = 1;
-}
 
 function drawUnits(ctx: CanvasRenderingContext2D, scene: Scene, camera: Camera): void {
   const sorted = [...scene.units].sort(
     (a, b) => a.pos.x + a.pos.y - (b.pos.x + b.pos.y),
   );
   for (const unit of sorted) {
-    if (unit.kind === 'techpriest') {
+    if (unit.typeId === 'techpriest') {
       const px = scene.playerScreen.x + camera.x;
       const py = scene.playerScreen.y + camera.y;
       drawShadow(ctx, px, py, PRIEST_SCALE);
       drawRig(ctx, px, py, scene.playerFacing, scene.playerPhase, scene.playerMoving);
       continue;
     }
-    const foot = tileFoot(scene.board, unit.pos, ENEMY_FOOT_OFFSET);
+    const type = ENEMY_TYPES[unit.typeId];
+    const foot = tileFoot(scene.board, unit.pos, type.footOffset);
     const phase = (scene.time * 0.5 + unit.pos.x * 0.37 + unit.pos.y * 0.53) % 1;
-    drawShadow(ctx, foot.x + camera.x, foot.y + camera.y, ENEMY_SCALE);
-    if (unit.kind === 'warrior') {
-      drawWarrior(ctx, foot.x + camera.x, foot.y + camera.y, phase);
-    } else {
-      drawScarab(ctx, foot.x + camera.x, foot.y + camera.y, phase);
-    }
+    drawEnemy(ctx, unit.typeId, foot.x + camera.x, foot.y + camera.y, phase);
   }
 }
 
