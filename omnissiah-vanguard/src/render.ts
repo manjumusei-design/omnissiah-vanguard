@@ -16,15 +16,15 @@ import {
   VOID_DARK,
 } from './palette';
 import { TILE_H, TILE_W, toScreen, type GridPos, type ScreenPos } from './projection';
-import { drawEnemy, drawPixelRect, drawRig, drawShadow, PRIEST_SCALE } from './rig';
-import { ENEMY_TYPES } from './enemies';
+import { drawEnemy, drawPixelRect, drawRig, drawShadow, PART_SIZE, PRIEST_SCALE } from './rig';
+import { ENEMY_TYPES, type EnemyTypeId } from './enemies';
 import {
   floorTexture,
   wallFaceTexture,
   wallTopTexture,
 } from './textures';
 import type { ArtImage } from './assets';
-import type { Facing, Unit } from './units';
+import type { Facing, UnitTypeId } from './units';
 
 const WALL_HEIGHT = 24;
 const RAISED_HEIGHT = 10;
@@ -36,19 +36,52 @@ export interface Camera {
   y: number;
 }
 
+export interface UnitView {
+  id: string;
+  typeId: UnitTypeId;
+  foot: ScreenPos;
+  facing: Facing;
+  phase: number;
+  moving: boolean;
+  hpRatio: number;
+  label: string | null;
+  showHpBar: boolean;
+  flash: number;
+  alpha: number; 
+}
+
+export interface Floaterview {
+  pos: ScreenPos;
+  text: string;
+  color: string;
+  outline: string;
+  age: number;
+}
+
+export interface ProjectileView {
+  from: ScreenPos;
+  to: ScreenPos;
+  t: number;
+}
+
+export interface GlowView {
+  grid: GridPos;
+  color: string;
+  age: number;
+}
+
 export interface Scene {
   board: TileKind[][];
-  units: Unit[];
   threat: Set<string>;
   showThreat: boolean;
   reachable: Set<string>;
-  playerScreen: ScreenPos;
-  playerFacing: Facing;
-  playerPhase: number;
-  playerMoving: boolean;
-  flashTile: string | null;
-  flashAge: number;
-  time: number;
+  units: UnitView[];
+  targetTiles: Set<string>;
+  targetEnemies: Set<string>;
+  floaters: FloaterView[];
+  projectile: ProjectileView | null;
+  ring: { grid: GridPos; age: number } | null;
+  glows: GlowView[];
 }
 
 export function tileRaise(board: TileKind[][], x: number, y: number): number {
@@ -321,38 +354,123 @@ function drawReachable(ctx: CanvasRenderingContext2D, g: GridPos, camera: Camera
   ctx.lineWidth = 1;
 }
 
-function drawFlash(ctx: CanvasRenderingContext2D, g: GridPos, camera: Camera, age: number): void {
-  const s = toScreen(g);
-  diamondPath(ctx, s.x + camera.x, s.y + camera.y);
-  ctx.globalAlpha = age * 0.6;
-  ctx.fillStyle = BONE;
-  ctx.fill();
-  ctx.globalAlpha = 1;
-}
-
 function parseKey(key: string): GridPos {
   const [xs, ys] = key.split(',');
   return { x: Number(xs), y: Number(ys) };
 }
 
+function drawTargetHighlights(ctx: CanvasRenderingContext2D, scene: Scene, camera: Camera): void {
+  for (const key of scene.targetTiles) {
+    const s = toScreen(parseKey(key));
+    diamondPath(ctx, s.x + camera.x, s.y + camera.y);
+    ctx.strokeStyle = BRASS;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.lineWidth = 1;
+  }
+  for (const key of scene.targetEnemies) {
+    const s = toScreen(parseKey(key));
+    diamondPath(ctx, s.x + camera.x, s.y + camera.y);
+    ctx.globalAlpha = 0.4;
+    ctx.fillStyle = DEEP_RED;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = BONE;
+    ctx.lineWidth - 2;
+    ctx.stroke();
+    ctx.lineWidth = 1;
+  }
+}
 
 function drawUnits(ctx: CanvasRenderingContext2D, scene: Scene, camera: Camera): void {
-  const sorted = [...scene.units].sort(
-    (a, b) => a.pos.x + a.pos.y - (b.pos.x + b.pos.y),
-  );
+  const sorted = [...scene.units].sort((a, b) => a.foot.y - b.foot.y);
   for (const unit of sorted) {
+    const px = unit.foot.x + camera.x;
+    const py = unit.foot.y + camera.y;
     if (unit.typeId === 'techpriest') {
-      const px = scene.playerScreen.x + camera.x;
-      const py = scene.playerScreen.y + camera.y;
       drawShadow(ctx, px, py, PRIEST_SCALE);
-      drawRig(ctx, px, py, scene.playerFacing, scene.playerPhase, scene.playerMoving);
+      drawRig(ctx, px, py, unit.facing, unit.phase, unit.moving);
       continue;
     }
-    const type = ENEMY_TYPES[unit.typeId];
-    const foot = tileFoot(scene.board, unit.pos, type.footOffset);
-    const phase = (scene.time * 0.5 + unit.pos.x * 0.37 + unit.pos.y * 0.53) % 1;
-    drawEnemy(ctx, unit.typeId, foot.x + camera.x, foot.y + camera.y, phase);
+    drawEnemy(ctx, unit.typeId, px, py, unit.phase, {
+      flip: unit.facing === 3,
+      alpha: unit.alpha,
+      flash: unit.flash,
+    });
+}
+  for (const unit of scene.units) {
+    if (!unit.showHpBar) continue;
+    const type = ENEMY_TYPES[unit.typeId as EnemyTypeId];
+    const px = unit.foot.x + camera.x;
+    const topY = unit.foot.y + camera.y - PART_SIZE * type.scale - 10;
+    if (unit.label) {
+      ctx.font = '9px "Courier New", monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = BONE;
+      ctx.fillText(unit.label, px, topY -3);
+      ctx.textAlign = 'left';
+    }
+    drawPixelRect(ctx, px - 16, topY, 32, 4, NEAR_BLACK);
+    const fill = Math.round(30 * Math.max(0, Math.min(1, unit.hpRatio)));
+    if (fill > 0) drawPixelRect(ctx, px - 15, topY + 1, fill, 2, DEEP_RED);
   }
+}
+
+function drawGlow(ctx: CanvasRenderingContext2D, glow: GlowView, camera: Camera): void {
+  const s = toScreen(glow.grid);
+  diamondPath(ctx, s.x + camera.x, s.y + camera.y);
+  ctx.globalAlpha = (1 - glow.age) * 0.55;
+  ctx.fillStyle = glow.color;
+  ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+function drawRing(ctx: CanvasRenderingContext2D, ring: { grid: GridPos; age: number }, camera: Camera): void {
+  ctx.globalAlpha = (1 - ring.age) * 0.7;
+  ctx.strokeStyle = BONE;
+  ctx.lineWidth = 2;
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const s = toScreen({ x: ring.grid.x + dx, y: ring.grid.y + dy });
+      diamondPath(ctx, s.x + camera.x, s.y + camera.y);
+      ctx.stroke();
+    }
+  }
+  ctx.globalAlpha = 1;
+  ctx.lineWidth = 1;
+}
+
+function drawProjectile(ctx: CanvasRenderingContext2D, p: ProjectileView, camera: Camera): void {
+  const t = Math.min(1, p.t);
+  const tailT = Math.max(0, t - 0.3);
+  const head = { x: p.from.x + (p.to.x - p.from.x) * t + camera.x, y: p.from.y + (p.to.y - p.from.y) * t + camera.y };
+  const tail = { x: p.from.x + (p.to.x - p.from.x) * tailT + camera.x, y: p.from.y + (p.to.y - p.from.y) * tailT + camera.y };
+  ctx.strokeStyle = BONE;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(tail.x, tail.y);
+  ctx.lineTo(head.x, head.y);
+  ctx.stroke();
+  ctx.lineWidth = 1;
+  ctx.fillStyle = BONE;
+  ctx.fillRect(head.x - 1, head.y - 1, 3, 3);
+}
+
+function drawFloater(ctx: CanvasRenderingContext2D, f: FloaterView, camera: Camera): void {
+  ctx.globalAlpha = 1 - f.age;
+  ctx.font = 'bold 13px "Courier New", monospace';
+  ctx.textAlign = 'center';
+  ctx.lineJoin = 'round';
+  const x = f.pos.x + camera.x;
+  const y = f.pos.y + camera.y - f.age * 18;
+  ctx.strokeStyle = f.outline;
+  ctx.lineWidth = 3;
+  ctx.strokeText(f.text, x, y);
+  ctx.fillStyle = f.color;
+  ctx.fillText(f.text, x, y);
+  ctx.globalAlpha = 1;
+  ctx.textAlign = 'left';
+  ctx.lineWidth = 1;
 }
 
 export function drawScene(
@@ -381,9 +499,20 @@ export function drawScene(
   for (const key of scene.reachable) {
     drawReachable(ctx, parseKey(key), camera);
   }
-  if (scene.flashTile && scene.flashAge > 0) {
-    drawFlash(ctx, parseKey(scene.flashTile), camera, scene.flashAge);
-  }
+  drawTargetHighlights(ctx, scene, camera);
 
   drawUnits(ctx, scene, camera);
+
+  for (const glow of scene.glows) {
+    drawGlow(ctx, glow, camera);
+  }
+  if (scene.ring) {
+    drawRing(ctx, scene.ring, camera);
+  }
+  if (scene.projectile) {
+    drawProjectile(ctx, scene.projectile, camera);
+  }
+  for (const floater of scene.floaters) {
+    drawFloater(ctx, floater, camera);
+  }
 }

@@ -191,3 +191,39 @@ body {
   display: none;
 }
 
+#overlay::before {
+  content: "";
+  position: absoulute;
+  inset: 0;
+  background: var(--near-black);
+  opacity: 0.78;
+}
+
+#overlay-box {
+  position: relative;
+  background: var(--void-dark);
+  border: 2px solid var (--brass);
+  padding: 24px 36px;
+  text-align: center;
+}
+
+#overlay-text {
+  margin: 0 0 16px;
+  letter-spacing: 2px;
+  font-weight: bold;
+}
+
+#overlay button {
+  background: var(--deep-red);
+  color: var (--bone);
+  border: 1px solid var(--brass);
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 1px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+
+#overlay button:hover {
+  background: var(--dark-crimson);
+}

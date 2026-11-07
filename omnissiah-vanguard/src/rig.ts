@@ -11,6 +11,7 @@ import {
   STEEL_LIGHT,
   TOMB_TEAL,
   VOID_DARK,
+  WHITE,
 } from './palette';
 import { loadArtImage, type ArtImage } from './assets';
 import { ENEMY_TYPES, spriteFile, type EnemyIdle, type EnemyTypeId } from './enemies';
@@ -504,26 +505,74 @@ function idleOffset(idle: EnemyIdle, phase: number): { x: number; y: number } {
     : { x: 0, y: -(idle.lift + wave) };
 }
 
+export interface EnemyDrawOptions {
+  flip?: boolean;
+  alpha?: number;
+  flash?: number;
+}
+
 export function drawEnemy(
   ctx: CanvasRenderingContext2D,
   typeId: EnemyTypeId,
   footX: number,
   footY: number,
   phase: number,
+  opts: EnemyDrawOptions = {}
 ): void {
   const type = ENEMY_TYPES[typeId];
+  const alpha = opts.alpha ?? 1;
   const fx = Math.round(footX);
   const fy = Math.round(footY);
-  drawShadow(ctx, fx, fy, type.scale * type.shadowScale, type.shadowAlpha);
+  drawShadow(ctx, fx, fy, type.scale * type.shadowScale, type.shadowAlpha * alpha);
   const offset = idleOffset(type.idle, phase);
-  ctx.drawImage(
-    enemySprite(typeId),
-    fx + (offset.x - 16) * type.scale,
-    fy + (offset.y - 31) * type.scale,
-    PART_SIZE * type.scale,
-    PART_SIZE * type.scale,
-  );
-  if (typeId === 'warrior') drawEyeGlow(ctx, fx, fy, offset, type.scale, phase);
+  const left = fx + (offset.x - 16) * type.scale;
+  const top = fy + (offset.y - 31) * type.scale;
+  const width = PART_SIZE * type.scale;
+  const height = PART_SIZE * type.scale;
+  const sprite = enemySprite(typeId);
+  ctx.globalAlpha = alpha;
+  if (opts.flip) {
+    ctx.drawImage(sprite, left + width, top, -width, height);
+  } else {
+    ctx.drawImage(sprite, left, top, width, height);
+  }
+  if (typeId === 'warrior') drawEyeGlow(ctx, fx, fy, offset, type.scale, phase, opts.flip ?? false, alpha);
+  if (opts.flash && opts.flash > 0) {
+    drawFlashOverlay(ctx, sprite, left, top, width, height, opts.flip ?? false, alpha * Math.min(1, opts.flash));
+  }
+  ctx.globalAlpha = 1;
+}
+
+let flashScratch: HTMLCanvasElement | null = null;
+
+function drawFlashOverlay(
+  ctx: CanvasRenderingContext2D,
+  sprite: ArtImage,
+  left: number,
+  top: number,
+  width: number,
+  height: number,
+  flip: number,
+  alpha: number,
+): void {
+  if (!flashScratch) {
+    flashScratch = makeCanvas(() => {});
+  }
+  const sctx = flashScratch.getContext('2d');
+  if (!sctx) return;
+  sctx.globalCompositeOperation = 'source-over';
+  sctx.clearRect(0, 0, PART_SIZE, PART_SIZE);
+  sctx.drawImage(sprite, 0, 0, PART_SIZE, PART_SIZE);
+  sctx.globalCompositeOperation = 'source-in';
+  sctx.fillStyle = WHITE;
+  sctx.fillRect(0, 0, PART_SIZE, PART_SIZE);
+  ctx.globalAlpha = alpha;
+  if (flip) {
+    ctx.drawImage(flashScratch, left + width, top, -width, height);
+  } else {
+    ctx.drawImage(flashScratch, left, top, width, height);
+  }
+  ctx.globalAlpha = 1;
 }
 
 function drawEyeGlow(
@@ -533,8 +582,11 @@ function drawEyeGlow(
   offset: { x: number; y: number },
   scale: number,
   phase: number,
+  flip: boolean,
+  alpha: number,
 ): void {
-  ctx.globalAlpha = 0.4 + 0.4 * Math.sin(phase * Math.PI * 2);
-  drawPixelRect(ctx, fx + (offset.x - 3) * scale, fy + (offset.y - 23) * scale, 4 * scale, 2 * scale, PALE_GREEN);
+  ctx.globalAlpha = (0.4 + 0.4 * Math.sin(phase * Math.PI * 2)) * alpha;
+  const bandX = flip ? fx - (offset.x - 3) * scale - 4 * scale : fx + (offset.x - 3) * scale;
+  drawPixelRect(ctx, bandX, fy + (offset.y - 23) * scale, 4 * scale, 2 * scale, PALE_GREEN);
   ctx.globalAlpha = 1;
 }
