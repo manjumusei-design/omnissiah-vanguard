@@ -320,3 +320,53 @@ export class Presenter {
       target.fading = true;
     }
   }
+
+  private applyDamage(seg: Extract<Seg, { kind: 'damage' }>, board: TileKind[][]): void {
+    const anim = seg.anim;
+    const onPlayer = seg.unitId === 'player';
+    if (onPlayer) {
+      this.addGlow('player', BONE);
+    } else {
+      anim.flashTimer = HIT_FLASH_SECONDS;
+    }
+    anim.hpRatio = this.finalHp.get(seg.unitId) ?? anim.hpRatio;
+    const foot = footOf(board, anim);
+    this.floaters.push({
+      pos: { x: foot.x, y: foot.y - FLOAT_LIFT },
+      text: String(seg.amount),
+      color: onPlayer ? DEEP_RED : BONE,
+      outline: onPlayer ? BONE : NEAR_BLACK,
+      age: 0,
+    });
+    if (seg.killed && !onPlayer) {
+      anim.fading = true;
+    }
+  }
+
+  private advanceSegs(dt: number, board: TileKind[][]): void {
+    const seg = this.segs[0]!;
+    if (seg.kind === 'walk') {
+      if (!seg.anim.walk) this.segs.shift();
+      else this.advanceWalk(seg.anim, dt);
+    } else if (seg.kind === 'strike') {
+      if (!seg.init) this.initStrike(seg, board);
+      seg.timer += dt;
+      if (!seg.shot) {
+        const t = Math.min(1, seg.timer / STRIKE_SECONDS);
+        const swing = Math.sin(Math.PI * t);
+        seg.anim.lunge = { x: seg.init!.dir.x * swing, y: seg.init!.dir.y * swing };
+        if (!seg.hit && t >= 0.5) this.applyHit(seg);
+      } else if (!seg.hit && seg.timer >= PROJECTILE_SECONDS) {
+        this.applyHit(seg);
+      }
+      const base = seg.shot ? PROJECTILE_SECONDS + 0.1 : STRIKE_SECONDS;
+      if (seg.timer >= base + (seg.killed ? FADE_SECONDS : 0)) {
+        seg.anim.lunge = { x: 0, y: 0 };
+        this.segs.shift();
+      }
+
+    }
+
+  }
+
+}
