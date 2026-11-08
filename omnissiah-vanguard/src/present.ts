@@ -364,9 +364,22 @@ export class Presenter {
         seg.anim.lunge = { x: 0, y: 0 };
         this.segs.shift();
       }
-
+    } else if (seg.kind === 'damage') {
+      seg.timer += dt;
+      if(!seg.hit) {
+        seg.hit = true;
+        this.applyDamage(seg, board);
+      }
+      const hold = seg.killed && seg.unitId !== 'player' ? FADE_SECONDS : DAMAGE_HOLD_SECONDS;
+      if (seg.timer >= hold) this.segs.shift();
+    } else {
+      seg.timer = dt;
+      if (seg.timer >= seg.duration) this.segs.shift();
     }
-
+    if (this.segs.length === 0 && this.onDone) {
+      const done = this.onDone;
+      this.onDone = null;
+      done();
+    }
   }
-
 }
