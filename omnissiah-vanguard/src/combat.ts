@@ -195,3 +195,128 @@ function isOccupied(state: CombatState, pos: GridPos, selfId: string): boolean {
     (f) => f.id !== selfId && f.hp > 0 && f.pos.x === pos.x && f.pos.y === pos.y,
   );
 }
+
+function tileAt(board: TileKind[][], pos: GridPos): TileKind | undefined {
+  return board[pos.y]?.[pos.x];
+}
+
+function enemyStats(typeId: Fighter['typeId']): EnemyType {
+  return ENEMY_TYPES[typeId as EnemyTypeId];
+}
+
+export function movePlayer(state: CombatState, path: GridPos[]): CombatState { 
+  if (state.turn !== 'player' || path.length === 0 || path.length > MOVE_RANGE) return state;
+  if (state.energy < path.length) return state;
+  let from = state.player.pos;
+  let facing = state.player.facing;
+  for (const step of path) {
+    if (chebyshev(from, step) !== 1) return state;
+    if (isBlocked(state.board, step.x, step.y)) return state;
+    if (isOccupied(state, step, 'player')) return state;
+    facing = facingFromDelta(step.x - from.x, step.y - from.y);
+    from = step;
+  }
+  const next = cloneState(state);
+  next.player.pos = { ...from };
+  next.player.facing = facing;
+  next.energy -= path.length;
+  return next;
+}
+
+export function drawCards(state: CombatState, rng: () => number): CombatState {
+  const next = cloneState(state);
+  while (next.hand.length < HAND_SIZE) {
+    if (next.deck.length === 0) {
+      if (next.discard.length === 0) break;
+      const reshuffled: string[] = [];
+      while (next.discard.length > 0) {
+        const index = Math.floor(rng() * next.discard.length);
+        reshuffled.push(next.discard.splice(index, 1)[0]!);
+      }
+      next.deck = reshuffled;
+    }
+    const index = Math.floor(rng() * next.deck.length);
+    next.hand.push(...next.deck.splice(index, 1));
+  }
+  return next;
+}
+
+export function castRite(
+  state: CombatState,
+  cardId: string,
+  targetUnitId: string | null,
+  targetTile: GridPos | null,
+): { state: CombatState; events: CombatEvent[] } {
+  if (state.turn !== 'player') return { state, events: [] };
+  if (!state.hand.includes(cardId)) return { state, events: [] };
+  const card = CARDS.find((c) => c.id === cardId);
+  if (!card || state.energy < card.cost) return { state, events: [] };
+
+  const applied = applyRite(state, cardId, targetUnitId, targetTile);
+  if (!applied) return { state, events: [] };
+
+  const next = applied.state;
+  const handIndex = next.hand.indexOf(cardId);
+  if (handIndex !== -1) {
+    next.hand.splice(handIndex, 1);
+    next.discard.push(cardId);
+  }
+  next.energy -= card.cost;
+  return {state: next, events: applied.events };
+}
+
+function applyRite(
+  state: CombatState,
+  cardId: string,
+  targetUnitId: string | null,
+  targetTile: GridPos | null,
+): { state: CombatState; events: CombatEvent[] } | null {
+  switch (cardId) {
+    case 'las-prayer': {
+      const enemy = targetUnitId
+        ? state.enemies.find((e) => e.id === targetUnitId && e.hp > 0)
+        : undefined;
+      if (!enemy) return null;
+      const range = LAS_PRAYER_RANGE
+        + (tileAt(state.board, state.player.pos) === 'raised' ? RAISED_RANGE_BONUS : 0);
+      if (chebyshev(state.player.pos, enemy.pos) > range) return null;
+      if (!losClear(state.board, state.player.pos, enemy.pos)) return null;
+      return resolveAttack(state, state.player, enemy, LAS_PRAYER_DAMAGE);
+    }
+    case 'cog-step': {
+      if (!targetTile) return null;
+      if (chebyshev(state.player.pos, targetTile) !== 1) return null;
+      if (isBlocked(state.board, targetTile.x, targetTile.y)) return null;
+      if (isOccupied(state, targetTile, 'player')) return null;
+      const next = cloneState(state);
+      next.player.pos = { ...targetTile };
+      next.player.facing = facingFromDelta(targetTile.x - state.player.pos.x, targetTile.y - state.player.pos.y);
+      return { state: next, events: [{ type: 'move', unitId: 'player', path: [{ ...targetTile }] }] };
+    }
+    case 'binharic-lash': {
+      let cur = cloneState(state);
+      const events: CombatEvent[] = [];
+      for (const snapshot of state.enemies) {
+        if (chebyshev(snapshot.pos, state.player.pos) > BINHARIC_LASH_RADIUS) continue;
+        const enemy = cur.enemies.find((e) => e.id === snapshot.id);
+        if (!enemy || enemy.hp <= 0) continue;
+        const result = resolveAttack(cur, cur.player, enemy, BINHARIC_LASH_DAMAGE);
+        cur = result.state;
+        events.push(...result.events);
+      }
+      return { state: cur, events };
+    }
+    case 'servo-skull': {
+      const next = cloneState(state);
+      next.scannedTurns = SCAN_TURNS;
+      return { state: next, events: [] };
+    }
+    case 'machine-blessing': {
+      const next = cloneState(state);
+      next.player.armor += BLESSING_ARMOR;
+      return { state: next, events: [] };
+    }
+    default:
+      return null;
+  }
+}
