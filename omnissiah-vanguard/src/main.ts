@@ -224,3 +224,128 @@ function cast(cardId: string, targetUnitId: string | null, targetTile: GridPos |
       : { priestGlowColor: BRASS };
   presenter.play(result.events, state, opts, afterAction);
 }
+
+function castAtClick(g: GridPos): void {
+  const cardId = selectedCard;
+  if (!cardId) return;
+  const key = tileKey(g.x, g.y);
+  if (cardId === 'las-prayer') {
+    const enemy = enemyAt(g);
+    if (enemy && lasPrayerTargetTiles().has(key)) {
+      cast(cardId, enemy.id, null);
+    } else {
+      selectedCard = null;
+      refreshHud();
+    }
+    return;
+}
+if (cardId === 'cog-step') {
+  if (cogStepTargetTiles().has(key)) {
+    cast(cardId, null, g);
+  } else {
+    selectedCard = null;
+    refreshHud();
+  }
+  return;
+}
+cast(cardId, null, null);
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const g = toGrid({
+    x: e.clientX - rect.left - camera.x,
+    y: e.clientY - rect.top - camera.y,
+  });
+  if (!canAct()) return;
+  if (selectedCard) {
+    castAtClick(g);
+    return;
+  }
+  const path = paths.get(tileKey(g.x, g.y));
+  if (!path) return;
+  if (path.length > state.energy) {
+    invalidCast('NOT ENOUGH ENERGY');
+    return;
+  }
+  const next = movePlayer(state, path);
+  if (next === state) return;
+  state = next;
+  setEnergy(state.energy, ENERGY_PER_TURN);
+  paths = new Map();
+  presenter.play([{ type: 'move', unitId: 'player', path }], state, {}, afterAction);
+});
+
+const handHandlers: HandHandlers = {
+  onLift(cardId) {
+    if (!canAct()) return;
+    selectedCard = cardId;
+  },
+  onLand(cardId) {
+    if (selectedCard === cardId) {
+      selectedCard = null;
+      refreshHud();
+    }
+  },
+  onDrop(cardId, canvasX, canvasY) {
+    if (!canAct()) return;
+    const g = toGrid({ x: canvasX - camera.x, y: canvasY - camera.y });
+    const key = tileKey(g.x, g.y);
+    if (cardId === 'las-prayer') {
+      const enemy = enemyAt(g);
+      if (enemy && lasPrayerTargetTiles().has(key)) {
+        cast(cardId, enemy.id, null);
+      } else {
+        invalidCast('NO TARGET IN RANGE');
+      }
+      return;
+    }
+    if (cardId === 'cog-step') {
+      if (cogStepTargetTiles().has(key)) {
+        cast(cardId, null, g);
+      } else {
+        invalidCast('NOT AN ADJACENT TILE');
+      }
+      return;
+    }
+    cast(cardId, null, null);
+  },
+  onSelect(cardId) {
+    if (!canAct()) return;
+    selectedCard = selectedCard === cardId ? null : cardId;
+    refreshHud();
+  },
+};
+
+endTurnButton.addEventListener('click', () => {
+  if (!canAct()) return;
+  selectedCard = null;
+  say('');
+  const ended = endPlayerTurn(state);
+  state = ended.state;
+  setIntegrity(state.player.hp, PLAYER_MAX_HP, state.player.armor);
+  paths = new Map();
+  if (state.turn === 'lost') {
+    presenter.play(ended.events, state, {}, () => {
+      refreshHud();
+      showOverlay(LOSE_TEXT);
+    });
+    return;
+  }
+  const result = enemyTurn(state, Math.random);
+  state = result.statel
+  presenter.play([...ended.events, ...result.events], state, {}, () => {
+    if (state.turn === 'won') {
+      refreshHud();
+      showOverlay(WIN_TEXT);
+      return;
+    }
+    if (state.turn === 'lost') {
+      refreshHud();
+      showOverlay(LOSE_TEXT);
+      return;
+    }
+    state = drawCards(state, Math.random);
+    refreshHud();
+  });
+});
