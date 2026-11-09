@@ -349,3 +349,56 @@ endTurnButton.addEventListener('click', () => {
     refreshHud();
   });
 });
+
+threatButton.addEventListener('click', () => {
+  showThreat = !showThreat;
+  threatButton.textContent = showThreat ? 'THREAT: ON' : 'THREAT: OFF';
+});
+
+restartButton.addEventListener('click', () => {
+  state = freshState();
+  selectedCard = null;
+  presenter.reset(state);
+  overlay.classList.add('hidden');
+  say('');
+  refreshHud();
+});
+
+resize();
+window.addEventListener('resize', resize);
+await Promise.all([loadRig(), loadEnemyArt(), loadBoardTextures()]);
+refreshHud();
+
+let last = performance.now();
+
+function frame(now: number): void {
+  const dt = Math.min(0.1, (now - last) / 1000);
+  last = now;
+
+  presenter.update(dt, state.board);
+  const scanned = state.scannedTurns > 0;
+  const targets = selectedCard === 'las-prayer'
+    ? { tiles: new Set<string>(), enemies: lasPrayerTargetTiles() }
+    : selectedCard === 'cog-step'
+      ? { tiles: cogStepTargetTiles(), enemies: new Set<string>() }
+      : { tiles: new Set<string>(), enemies: new Set<string>() };
+  const fx = presenter.effects();
+  const scene: Scene = {
+    board: state.board,
+    threat,
+    showThreat: showThreat || scanned,
+    reachable: selectedCard || presenter.busy ? new Set() : new Set(paths.keys()),
+    units: presenter.unitViews(state, scanned),
+    targetTiles: targets.tiles,
+    targetEnemies: targets.enemies,
+    floaters: fx.floaters,
+    projectile: fx.projectile,
+    ring: fx.ring,
+    glows: fx.glows,
+  };
+
+  drawScene(ctx, scene, camera, background);
+  requestAnimationFrame(frame);
+}
+
+requestAnimationFrame(frame);
