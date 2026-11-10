@@ -490,6 +490,32 @@ function betterCandidate(a: GridPos, b: GridPos, playerPos: GridPos): GridPos {
   const db = chebyshev(b, playerPos);
   if (da !== db) return da < db ? a : b;
   if (a.y !== b.y) return a.y < b.y ? a : b;
-  return a.x < b.x ? a: b;
+  return a.x < b.x ? a: b;1
 }
 
+export function threatFor(state: CombatState, enemy: Fighter): set<string> {
+  const stats = enemyStats(enemy.typeId);
+  const occupied = [state.player, ...state.enemies.filter((e) => e.id !== enemy.id)]
+  .filter((f) => f.hp >0)
+  .map((f) => f.pos);
+  const threat = new Set<string>();
+  for (const source of reach(state.board, enemy.pos, stats.moveRange, occupied)) {
+    for (let dy = -stats.attackRange; dy <= stats.attackRange; dy++) {
+      for (let dx = -stats.attackRange; dx <= stats.attackRange; dx++) {
+        const tile = { x: source.x + dx, y: source.y + dy };
+        if (isBlocked(state.board, tile.x, tile.y)) continue;
+        if (stats.attackRange > 1 && !losClear(state.board, source, tile)) continue;
+        threat.add(tileKey(tile.x, tile.y));
+      }
+    }
+  }
+  return threat;
+}
+
+export function computeAllThreat(state: CombatState): Set<string> {
+  const threat = new Set<string>();
+  for (const enemy of state.enemies) {
+    for (const key of threatFor(state, enemy)) threat.add(key);
+  }
+  return threat;
+}
