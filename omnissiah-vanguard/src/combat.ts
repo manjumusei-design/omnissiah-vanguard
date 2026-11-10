@@ -320,3 +320,155 @@ function applyRite(
       return null;
   }
 }
+
+export function resolveAttack(
+  state: CombatState,
+  attacker: Fighter,
+  target: Fighter,
+  base: number,
+  rng: () => number = Math.random,
+): { state: CombatState; events: CombatEvent[] } {
+  const next = cloneState(state);
+  const attackerRef = findFighter(next, attacker.id);
+  const targetRef = findFighter(next, target.id);
+  if (!attackerRef || !targetRef || attackerRef.hp <= 0 || targetRef.hp <= 0) {
+    return { state, events: [] };
+  }
+
+  let actualTarget = targetRef;
+  if (attackerRef.statuses.includes('malfunctioning') && rng() < 0.5) {
+    const allies = attackerRef.id === 'player'
+      ? []
+      : next.enemies.filter(
+          (e) => e.id !== attackerRef.id && e.hp > 0 && chebyshev(e.pos, attackerRef.pos) === 1,
+        );
+    if (allies.length > 0) {
+      actualTarget = allies[Math.floor(rng() * allies.length)]!;
+    }
+  }
+
+  const rear = isRear(attackerRef.pos, actualTarget);
+  let damage = Math.floor(base * (rear ? REAR_MULTIPLIER : 1));
+  if (
+    attackerRef.id === 'player'
+    && next.sanctified.includes(tileKey(attackerRef.pos.x, attackerRef.pos.y))
+  ) {
+    damage += SANCTIFIED_BONUS;
+  }
+  const absorbed = Math.min(actualTarget.armor, damage);
+  actualTarget.armor -= absorbed;
+  actualTarget.hp = Math.max(0, actualTarget.hp - (damage - absorbed));
+  const killed = actualTarget.hp === 0;
+  if (killed && actualTarget.id !== 'player') {
+    next.enemies = next.enemies.filter((e) => e.id !== actualTarget.id);
+  }
+  if (next.enemies.length === 0) {
+    next.turn = 'won';
+  }
+  const events: CombatEvent[] = [{
+    type: 'attack',
+    attackerId: attackerRef.id,
+    targetId: actualTarget.id,
+    from: { ...attackerRef.pos },
+    damage,
+    rear,
+    killed,
+  }];
+  return { state: next, events };
+}
+
+export function endPlayerTurn(state: CombatState): { state: CombatState; events: CombatEvent[] } {
+  if (state.turn !== 'player') return { state, events: [] };
+  const next = cloneState(state);
+  next.turn = 'enemy';
+  const events: CombatEvent[] = [{ type: 'turnEnd', turn: 'enemy' }];
+
+  if (tileAt(next.board, next.player.pos) === 'hazard') {
+    next.player.hp = Math.max(0, next.player.hp - HAZARD_DAMAGE);
+    events.push({ type: 'damage', unitId: next.player.id, amount: HAZARD_DAMAGE, killed: next.player.hp === 0 });
+  }
+  for (const fighter of [next.player, ...next.enemies]) {
+    if (fighter.statuses.includes('corrupted')) {
+      fighter.hp = Math.max(0, fighter.hp - CORRUPTED_DAMAGE);
+      events.push({ type: 'damage', unitId: fighter.id, amount: CORRUPTED_DAMAGE, killed: fighter.hp === 0 });
+    }
+  }
+  next.enemies = next.enemies.filter((e) => e.hp > 0);
+  if (next.player.hp <= 0) {
+    next.turn = 'lost';
+  }
+  return { state: next, events };
+}
+
+export function enemyTurn(
+  state: CombatState,
+  rng: () => number,
+): { state: CombatState; events: CombatEvent[] } {
+  if (state.turn !== 'enemy') return { state, events: [] };
+  let cur = cloneState(state);
+  const events: CombatEvent[] = [];
+
+  for (const snapshot of state.enemies) {
+    const enemy = cur.enemies.find((e) => e.id === snapshot.id);
+    if (!enemy || enemy.hp <= 0) continue;
+    if (enemy.statuses.includes('scrambled')) {
+      enemy.statuses = enemy.statuses.filter((s) => s !== 'scrambled');
+      events.push({ type: 'status', unitId: enemy.id, status: 'scrambled'});
+      continue;
+    }
+    const stats = enemyStats(enemy.typeId);
+    const dist = chebyshev(enemy.pos, cur.player.pos);
+    if(dist <= stats.attackRange && (stats.attackRange === 1 || losClear(cur.board, enemy.pos, cur.player.pos))) {
+      const result = resolveAttack(cur, enemy, cur.player, stats.attackDamage, rng);
+      cur = result.state;
+      events.push(...result.events);
+    } else {
+      const path = approach(cur, enemy, stats);
+      if (path.length > 0) {
+        enemy.pos = path[path.length - 1]!;
+        enemy.facing = facingFromDelta(cur.player.pos.x - enemy.pos.x, cur.player.pos.y - enemy.pos.y);
+        events.push({ type: 'move', unitId: enemy.id, path });
+      }
+      if (tileAt(cur.board, enemy.pos) === 'hazard') {
+        enemy.hp = Math.max(0, enemy.hp - HAZARD_DAMAGE);
+        events.push({ type: 'damage', unitId: enemy.id, amount: HAZARD_DAMAGE, killed: enemy.hp === 0 });
+        if (enemy.hp === 0) {
+          cur.enemies = cur.enemies.filter((e) => e.id !== enemy.id);
+        }
+      }
+    }
+    if (cur.player.hp <= 0 || cur.enemies.length === 0) break;
+  }
+
+  if (cur.player.hp <= 0) {
+    cur.turn = 'lost';
+  } else if (cur.enemies.length === 0) {
+    cur.turn = 'won';
+  } else {
+    cur.turn = 'player';
+    cur.turnCount += 1;
+    cur.energy = ENERGY_PER_TURN;
+    cur.player.armor = 0;
+    cur.scannedTurns = Math.max(0, cur.scannedTurns - 1);
+  }
+  return { state: cur, events };
+}
+
+function approach(cur: CombatState, enemy: Fighter, stats: EnemyType): GridPos[] {
+  const path: GridPos[] = [];
+  let pos = enemy.pos;
+  for (let step = 0; step < stats.moveRange; step++) {
+    if (inAttackPosition(cur, pos, stats)) break;
+    const candidate = greedyStep(cur, enemy.id, pos, cur.player.pos);
+    if (!candidate || (candidate.x === pos.x && candidate.y === pos.y)) break;
+    path.push(candidate);
+    pos = candidate;
+  }
+  return path;
+}
+
+function inAttackPosition(cur: CombatState, pos: GridPos, stats: EnemyType): boolean {
+  if (chebyshev(pos, cur.player.pos) > stats.attackRange) return false;
+  return stats.attackRange === 1 || losClear(cur.board, pos, cur.player.pos);
+}
+
