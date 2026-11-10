@@ -150,6 +150,16 @@ body {
   font-weight: bold;
 }
 
+.card .hpcost {
+  display: inline-block;
+  margin-left: 4px;
+  border: 1px solid var(--deep-red);
+  background: var(--deep-red);
+  color: var(--bone);
+  padding: 0 4px;
+  font-weight: bold;
+}
+
 .card .name {
   font-variant: small-caps;
   font-weight: bold;
@@ -225,5 +235,87 @@ body {
 }
 
 #overlay button:hover {
+  background: var(--dark-crimson);
+}
+
+#reward {
+  position: absoulute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#reward.hidden {
+  display: none;
+}
+
+#reward::before {
+  content: "";
+  position: absoulute;
+  inset: 0;
+  background: var(--near-black);
+  opacity: 0.78;
+}
+
+#reward-box {
+  position: relative;
+  background: var(--void-dark);
+  border: 2px solid var(--brass);
+  padding: 20px 28px;
+  text-align: center;
+}
+
+#reward-title {
+  margin: 0 0 6px;
+  letter-spacing: 2px;
+  font-weight: bold;
+}
+
+#reward-deck {
+  margin: 0 0 12px;
+  color: var(--signal-green);
+  letter-spacing: 1px;
+}
+
+#reward-cards {
+  display: flex;
+  gap: 14;
+  justify-content: center;
+  margin-bottom: 14px;
+}
+
+.card.reward {
+  cursor: default;
+}
+
+.card.reward button {
+  background: var(--deep-red);
+  color: var(--bone);
+  border: 1px solid var(--brass);
+  font-family: inherit;
+  font-size: 10px;
+  letter-spacing: 1px;
+  padding: 4px 10px;
+  margin-top: 6px;
+  cursor: pointer;
+}
+
+.card.reward button:hover {
+  background: var(--dark-crimson);
+}
+
+#decline {
+  background: var(--deep-red);
+  color: var(--bone);
+  border: 1px solid var(--brass);
+  font-family: inherent;
+  font-size: 11px;
+  letter-spacing: 1px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+
+#decline:hover {
   background: var(--dark-crimson);
 }

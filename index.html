@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Omnissiah Vanguard</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="stage">
+      <canvas id="board"></canvas>
+      <div id="overlay" class="hidden">
+        <div id="overlay-box">
+          <p id="overlay-text"></p>
+          
+          <button id="restart" type="button">BEGIN AGAIN</button>
+        </div>
+      </div>
+    </div>
+    <div id="panel">
+      <div id="hud">
+        <span id="energy">ENERGY 3/3</span>
+        <span id="integrity">INTEGRITY 30/30</span>
+        <span id="msg"></span>
+        <button id="end-turn" type="button">END TURN</button>
+        <button id="threat-toggle" type="button">THREAT: OFF</button>
+      </div>
+      <div id="hand"></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

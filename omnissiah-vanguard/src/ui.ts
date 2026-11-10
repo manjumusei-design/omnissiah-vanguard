@@ -9,8 +9,13 @@ export interface HandHandlers {
   onSelect(cardId: string): void;
 }
 
+export function energyLabel(current: number, max: number): string {
+  if (current > max) return `ENERGY ${current} (+${current - max})`;
+  return `ENERGY ${current}/${max}`;
+}
+
 export function setEnergy(current: number, max: number): void {
-  requireElement('energy').textContent = `ENERGY ${current}/${max}`;
+  requireElement('energy').textContent = energyLabel(current, max);
 }
 
 export function flashEnergy(): void {
@@ -44,13 +49,50 @@ export function setHand(
       'card' +
       (card.id === selectedId ? ' selected' : '') +
       (card.cost > energy ? ' dead' : '');
-    el.innerHTML =
-      `<span class="cost">${card.cost}</span>` +
-      `<span class="name">${card.name}</span>` +
-      `<span class="kind">${card.kind}</span>` +
-      `<p class="blurb">${card.blurb}</p>`;
+    el.innerHTML = cardMarkup(card);
     hand.appendChild(el);
     attachCard(el, card.id, canvas, handlers);
+  }
+}
+
+function cardMarkup(card: CardDef, kindLabel: string = card.kind): string {
+  return (
+    `<span class="cost">${card.cost}</span>` +
+    (card.hpCost ? `<span class="hpcost">${card.hpCost} HP</span>` : '') +
+    `<span class="name">${card.name}</span>` +
+    `<span class="kind">${kindLabel}</span>` +
+    `<p class="blurb">${card.blurb}</p>`
+  );
+}
+
+export interface RewardChoice {
+  card: CardDef;
+  doctrine: string | null;
+}
+
+export interface RewardHandlers {
+  onTake(cardId: string): void;
+  onDecline(): void;
+}
+
+export function setDeckLabel(size: number, cap: number): void {
+  requireElement('reward-deck').textContent = `DECK ${size}/${cap}`;
+}
+
+export function setRewardCards(choices: RewardChoice[], handlers: RewardHandlers): void {
+  const host = requireElement('reward-cards');
+  host.textContent = '';
+  for (const choice of choices) {
+    const el = document.createElement('reward-cards');
+    el.className = 'card reward';
+    el.innerHTML =
+      cardMarkup(choice.card, choice.doctrine ? choice.doctrine.toUpperCase() : choice.card.kind);
+    const take = document.createElement('button');
+    take.type = 'button';
+    take.textContent = 'TAKE';
+    take.addEventListener('click', () => handlers.onTake(choice.card.id));
+    el.appendChild(take);
+    host.appendChild(el);
   }
 }
 
