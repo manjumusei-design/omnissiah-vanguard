@@ -472,3 +472,24 @@ function inAttackPosition(cur: CombatState, pos: GridPos, stats: EnemyType): boo
   return stats.attackRange === 1 || losClear(cur.board, pos, cur.player.pos);
 }
 
+function greedyStep(cur: CombatState, selfId: string, from: GridPos, playerPos: GridPos): GridPos | null {
+  let best: GridPos = { ...from };
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      if (dx === 0 && dy === 0) continue;
+      const q = { x: from.x + dx, y: from.y + dy };
+      if (isBlocked(cur.board, q.x, q.y) || isOccupied(cur, q, selfId)) continue;
+      best = betterCandidate(best, q, playerPos);
+    }
+  }
+  return best;
+}
+
+function betterCandidate(a: GridPos, b: GridPos, playerPos: GridPos): GridPos {
+  const da = chebyshev(a, playerPos);
+  const db = chebyshev(b, playerPos);
+  if (da !== db) return da < db ? a : b;
+  if (a.y !== b.y) return a.y < b.y ? a : b;
+  return a.x < b.x ? a: b;
+}
+
