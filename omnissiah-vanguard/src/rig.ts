@@ -509,6 +509,7 @@ export interface EnemyDrawOptions {
   flip?: boolean;
   alpha?: number;
   flash?: number;
+  tint?: number;
 }
 
 export function drawEnemy(
@@ -538,14 +539,50 @@ export function drawEnemy(
   }
   if (typeId === 'warrior') drawEyeGlow(ctx, fx, fy, offset, type.scale, phase, opts.flip ?? false, alpha);
   if (opts.flash && opts.flash > 0) {
-    drawFlashOverlay(ctx, sprite, left, top, width, height, opts.flip ?? false, alpha * Math.min(1, opts.flash));
+    drawSilhouetteOverlay(ctx, sprite, left, top, width, height, opts.flip ?? false, alpha * Math.min(1, opts.flash), WHITE);
+  }
+  if (opts.tint && opts.tint > 0) {
+    drawSilhouetteOverlay(ctx, sprite, left, top, width, height, opts.flip ?? false, alpha * 0.45 * Math.min(1, opts.tint), SIGNAL_GREEN);
   }
   ctx.globalAlpha = 1;
 }
 
+export const TURRET_SCALE = 1.6;
+
+const paintTurretFallback = (ctx: CanvasRenderingContext2D): void => {
+  outlinedRect(ctx, 10, 19, 12, 9, GUNMETAL);
+  drawPixelRect(ctx, 12, 21, 8, 2, SLATE_DARK);
+  drawPixelRect(ctx, 14, 13, 4, 7, BRASS);
+  drawPixelRect(ctx, 15, 8, 2, 6, STEEL_LIGHT);
+  drawPixelRect(ctx, 13, 23, 2, 2, SIGNAL_GREEN);
+  drawPixelRect(ctx, 17, 23, 2, 2, SIGNAL_GREEN);
+};
+
+let turretArt: ArtImage | null = null;
+let turretFallback: HTMLCanvasElement | null = null;
+
+export async function loadTurretArt(): Promise<void> {
+  turretArt = await loadArtImage(ART_ROOT + 'servitor-turret.png');
+  if (!turretArt) console.log('turret art: fallback to painted sprite');
+}
+
+export function drawTurret(ctx: CanvasRenderingContext2D, footX: number, footY: number): void {
+  const fx = Math.round(footX);
+  const fy = Math.round(footY);
+  drawShadow(ctx, fx, fy, TURRET_SCALE * 0.7, 0.35);
+  const image = turretArt ?? (turretFallback ??= makeCanvas(paintTurretFallback));
+  ctx.drawImage(
+    image,
+    fx - 16 * TURRET_SCALE,
+    fy - 31 * TURRET_SCALE,
+    PART_SIZE * TURRET_SCALE,
+    PART_SIZE * TURRET_SCALE,
+  );
+}
+
 let flashScratch: HTMLCanvasElement | null = null;
 
-function drawFlashOverlay(
+function drawSilhouetteOverlay(
   ctx: CanvasRenderingContext2D,
   sprite: ArtImage,
   left: number,
@@ -554,6 +591,7 @@ function drawFlashOverlay(
   height: number,
   flip: number,
   alpha: number,
+  color: string,
 ): void {
   if (!flashScratch) {
     flashScratch = makeCanvas(() => {});
@@ -564,7 +602,7 @@ function drawFlashOverlay(
   sctx.clearRect(0, 0, PART_SIZE, PART_SIZE);
   sctx.drawImage(sprite, 0, 0, PART_SIZE, PART_SIZE);
   sctx.globalCompositeOperation = 'source-in';
-  sctx.fillStyle = WHITE;
+  sctx.fillStyle = color;
   sctx.fillRect(0, 0, PART_SIZE, PART_SIZE);
   ctx.globalAlpha = alpha;
   if (flip) {
