@@ -16,7 +16,15 @@ import {
   VOID_DARK,
 } from './palette';
 import { TILE_H, TILE_W, toScreen, type GridPos, type ScreenPos } from './projection';
-import { drawEnemy, drawPixelRect, drawRig, drawShadow, PART_SIZE, PRIEST_SCALE } from './rig';
+import {
+  drawEnemy,
+  drawPixelRect,
+  drawRig,
+  drawShadow,
+  drawTurret,
+  PART_SIZE,
+  PRIEST_SCALE,
+} from './rig';
 import { ENEMY_TYPES, type EnemyTypeId } from './enemies';
 import {
   floorTexture,
@@ -48,6 +56,7 @@ export interface UnitView {
   showHpBar: boolean;
   flash: number;
   alpha: number; 
+  tint?: number;
 }
 
 export interface Floaterview {
@@ -76,6 +85,8 @@ export interface Scene {
   showThreat: boolean;
   reachable: Set<string>;
   units: UnitView[];
+  turrets: GridPos[];
+  sanctified: Set<string>;
   targetTiles: Set<string>;
   targetEnemies: Set<string>;
   floaters: FloaterView[];
@@ -83,6 +94,8 @@ export interface Scene {
   ring: { grid: GridPos; age: number } | null;
   glows: GlowView[];
 }
+
+export const TURRET_FOOT_OFFSET = 6;
 
 export function tileRaise(board: TileKind[][], x: number, y: number): number {
   const tile = board[y]?.[x];
@@ -363,6 +376,10 @@ function drawTargetHighlights(ctx: CanvasRenderingContext2D, scene: Scene, camer
   for (const key of scene.targetTiles) {
     const s = toScreen(parseKey(key));
     diamondPath(ctx, s.x + camera.x, s.y + camera.y);
+    ctx.globalAlpha = 0.18;
+    ctx.fillStyle = BRASS;
+    ctx.fill();
+    ctx.globalAlpha = 1;
     ctx.strokeStyle = BRASS;
     ctx.lineWidth = 2;
     ctx.stroke();
@@ -382,22 +399,34 @@ function drawTargetHighlights(ctx: CanvasRenderingContext2D, scene: Scene, camer
   }
 }
 
-function drawUnits(ctx: CanvasRenderingContext2D, scene: Scene, camera: Camera): void {
-  const sorted = [...scene.units].sort((a, b) => a.foot.y - b.foot.y);
-  for (const unit of sorted) {
-    const px = unit.foot.x + camera.x;
-    const py = unit.foot.y + camera.y;
-    if (unit.typeId === 'techpriest') {
-      drawShadow(ctx, px, py, PRIEST_SCALE);
-      drawRig(ctx, px, py, unit.facing, unit.phase, unit.moving);
-      continue;
-    }
-    drawEnemy(ctx, unit.typeId, px, py, unit.phase, {
-      flip: unit.facing === 3,
-      alpha: unit.alpha,
-      flash: unit.flash,
-    });
+function drawUnitView(ctx: CanvasRenderingContext2D, unit: UnitView, camera: Camera): void {
+  const px = unit.foot.x + camera.x;
+  const py = unit.foot.y + camera.y;
+  if (unit.typeId === 'techpriest') {
+    drawShadow(ctx, px, py, PRIEST_SCALE);
+    drawRig(ctx, px, py, unit.facing, unit.phase, unit.moving);
+    return;
+  }
+  drawEnemy(ctx, unit.typeId as EnemyTypeId, px, py, unit.phase, {
+    flip: unit.facing === 3,
+    alpha: unit.alpha,
+    flash: unit.flash,
+    tint: unit.tint,
+  });
 }
+
+function drawUnits(ctx: CanvasRenderingContext2D, scene: Scene, camera: Camera): void {
+  const entries: Array<{ y: number; paint: () => void }> = [];
+  for (const unit of scene.units) {
+    entries.push({ y: unit.foot.y, paint: () => drawUnitView(ctx, unit, camera) });
+  }
+  for (const pos of scene.turrets) {
+    const foot = tileFoot(scene.board, pos, TURRET_FOOT_OFFSET);
+    entries.push({ y: foot.y, paint: () => drawTurret(ctx, foot.x + camera.x, foot.y + camera.y) });
+  }
+  entries.sort((a, b) => a.y - b.y);
+  for (const entry of entries) entry.paint();
+
   for (const unit of scene.units) {
     if (!unit.showHpBar) continue;
     const type = ENEMY_TYPES[unit.typeId as EnemyTypeId];
@@ -491,6 +520,15 @@ export function drawScene(
     }
   }
 
+  for (const key of scene.sanctified) {
+    const g = parseKey(key);
+    const s = toScreen(g);
+    diamondPath(ctx, s.x + camera.x, s.y + camera.y - tileRaise(scene.board, g.x, g.y));
+    ctx.globalAlpha = 0.3;
+    ctx.fillStyle = BRASS;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
   if (scene.showThreat) {
     for (const key of scene.threat) {
       drawThreat(ctx, parseKey(key), camera);

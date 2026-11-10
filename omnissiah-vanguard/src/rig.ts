@@ -1,4 +1,3 @@
-// Ai generated rigging for the character skeleton, reviewed by me and playtested
 import {
   BRASS,
   DARK_CRIMSON,
@@ -16,6 +15,8 @@ import {
 import { loadArtImage, type ArtImage } from './assets';
 import { ENEMY_TYPES, spriteFile, type EnemyIdle, type EnemyTypeId } from './enemies';
 import type { Facing, Unit } from './units';
+
+export const PART_SIZE = 32;
 
 export const PRIEST_SCALE = 1.3;
 
@@ -43,10 +44,10 @@ export const PARTS: Record<PartName, PartDef> = {
 const TORSO_LIFT = 28;
 const HEAD_LIFT = 56;
 const DENDRITE_ROOT_IMG = { x: 17, y: 2 };
-const DENDRITE_ATTACH_L = { x: 12, y: -54 };
+const DENDRITE_ATTACH_L = { x: -12, y: -54 };
 const DENDRITE_ATTACH_R = { x: 11, y: -54 };
-const WEAPON_ROOT_IMG = {x: 4, y: 2 };
-const WEAPON_ATTACH = { x: 9, y: -54};
+const WEAPON_ROOT_IMG = { x: 4, y: 2 };
+const WEAPON_ATTACH = { x: 9, y: -54 };
 
 export function drawPixelRect(
   ctx: CanvasRenderingContext2D,
@@ -215,7 +216,7 @@ export async function loadRig(): Promise<void> {
     loadArtImage(ART_ROOT + 'priest-legs.png'),
     loadArtImage(ART_ROOT + 'priest-dendrite.png'),
     loadArtImage(ART_ROOT + 'priest-weapon.png'),
-  ])
+  ]);
   PARTS.head.image = head;
   PARTS.torso.image = torso;
   PARTS.legs.image = legs;
@@ -233,7 +234,6 @@ const SHADOW_RX = 11;
 const SHADOW_RY = 5;
 const SHADOW_DROP = 1.5;
 const SHADOW_ALPHA = 0.4;
-
 
 export function drawShadow(
   ctx: CanvasRenderingContext2D,
@@ -267,7 +267,7 @@ export async function loadEnemyArt(): Promise<void> {
   }
 }
 
-function drawArt (
+function drawArt(
   ctx: CanvasRenderingContext2D,
   image: ArtImage,
   anchorX: number,
@@ -335,7 +335,7 @@ function drawDendrite(
 
 function drawDendrites(ctx: CanvasRenderingContext2D, phase: number): void {
   if (!rig) throw new Error('rig not loaded');
-  const angleL = Math.sin(phase * Math.PI * 2) *WRITHE_RADIANS;
+  const angleL = Math.sin(phase * Math.PI * 2) * WRITHE_RADIANS;
   const angleR = Math.sin(phase * Math.PI * 2 + Math.PI / 3) * WRITHE_RADIANS;
   const dendriteImage = PARTS.dendriteL.image;
   if (dendriteImage) {
@@ -508,8 +508,8 @@ function idleOffset(idle: EnemyIdle, phase: number): { x: number; y: number } {
 export interface EnemyDrawOptions {
   flip?: boolean;
   alpha?: number;
-  flash?: number;
-  tint?: number;
+  flash?: number; 
+  tint?: number; 
 }
 
 export function drawEnemy(
@@ -518,7 +518,7 @@ export function drawEnemy(
   footX: number,
   footY: number,
   phase: number,
-  opts: EnemyDrawOptions = {}
+  opts: EnemyDrawOptions = {},
 ): void {
   const type = ENEMY_TYPES[typeId];
   const alpha = opts.alpha ?? 1;
@@ -589,7 +589,7 @@ function drawSilhouetteOverlay(
   top: number,
   width: number,
   height: number,
-  flip: number,
+  flip: boolean,
   alpha: number,
   color: string,
 ): void {

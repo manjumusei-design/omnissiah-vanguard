@@ -1,7 +1,7 @@
 import { PLAYER_MAX_HP, facingFromDelta, type CombatEvent, type CombatState, type Fighter } from './combat';
 import { ENEMY_TYPES, type EnemyTypeId } from './enemies';
-import { BONE, DEEP_RED, NEAR_BLACK } from './palette';
-import { PRIEST_FOOT_OFFSET, tileFoot, type FloaterView, type GlowView, type ProjectileView, type UnitView } from './render';
+import { BONE, BRASS, DEEP_RED, NEAR_BLACK } from './palette';
+import { PRIEST_FOOT_OFFSET, TURRET_FOOT_OFFSET, tileFoot, type FloaterView, type GlowView, type ProjectileView, type UnitView } from './render';
 import type { GridPos, ScreenPos } from './projection';
 import type { TileKind } from './board';
 import type { Facing, UnitTypeId } from './units';
@@ -16,6 +16,7 @@ const FADE_SECONDS = 0.2;
 const GLOW_SECONDS = 0.3;
 const RING_SECONDS = 0.25;
 const FLOAT_SECONDS = 0.8;
+const FLOAT_STAGGER_PX = 14;
 const LUNGE_PX = 6;
 const FLOAT_LIFT = 30;
 const MUZZLE_LIFT = 40;
@@ -26,6 +27,13 @@ export interface EffectsView {
   projectile: ProjectileView | null;
   ring: {grid: GridPos; age: number } | null;
   glows: GlowView[];
+}
+
+export function nextFloaterPos(pos: ScreenPos, existing: FloaterView[]): ScreenPos {
+  const crowd = existing.filter(
+    (f) => Math.abs(f.pos.x - pos.x) < 20 && Math.abs(f.pos.y - pos.y) < 20,
+  ).length;
+  return { x: pos.x + crowd * FLOAT_STAGGER_PX, y: pos.y };
 }
 
 export interface PlayOptions {
@@ -75,7 +83,11 @@ function maxHpOf(fighter: Fighter): number {
 }
 
 function footOf(board: TileKind[][], anim: Anim): ScreenPos {
-  const offset = anim.typeId === 'techpriest' ? PRIEST_FOOT_OFFSET : ENEMY_TYPES[anim.typeId as EnemyTypeId].footOffset;
+  const offset = anim.typeId === 'techpriest'
+  ? PRIEST_FOOT_OFFSET
+  : anim.typeId === 'turret'
+    ? TURRET_FOOT_OFFSET
+    : ENEMY_TYPES[anim.typeId as EnemyTypeId].footOffset;
   return tileFoot(board, anim.grid, offset);
 }
 
@@ -106,6 +118,7 @@ export class Presenter {
   }
 
   snap(state: CombatState): void {
+    this.syncTurrets(state)
     for (const fighter of [state.player, ...state.enemies]) {
       const existing = this.anims.get(fighter.id);
       const typeId: UnitTypeId = fighter.id === 'player' ? 'techpriest' : fighter.typeId;
@@ -139,6 +152,7 @@ export class Presenter {
     this.finalHp = new Map(
       [final.player, ...final.enemies].map((f) => [f.id, f.hp / maxHpOf(f)]),
     );
+    this.syncTurrets(final);
     const segs: Seg[] = [];
     if (opts.priestGlowColor) {
       this.addGlow('player', opts.priestGlowColor);
@@ -170,11 +184,13 @@ export class Presenter {
           targetId: event.targetId,
           damage: event.damage,
           killed: event.killed,
-          shot: opts.projectile ?? false,
+          shot: opts.projectile === true || attacker.typeId === 'turret',
           timer: 0,
           hit: false,
           init: null,
         });
+      } else if (event.type === 'summon') {
+        this.glows.push({ grid: { ...event.pos }, color: BRASS, age: 0 });
       } else if (event.type === 'damage') {
         const anim = this.anims.get(event.unitId);
         if (!anim) continue;
@@ -221,12 +237,17 @@ export class Presenter {
   }
 
   unitViews(state: CombatState, scanned: boolean): UnitView[] {
-    const live = new Set([state.player.id, ...state.enemies.map((e) => e.id)]);
+    const live = new Set([
+      state.player.id,
+      ...state.enemies.map((e) => e.id),
+      ...state.turrets.map((t) => t.id),
+    ]);
     for (const [id, anim] of this.anims) {
       if (!live.has(id) && !(anim.fading && anim.alpha > 0)) this.anims.delete(id);
     }
     const views: UnitView[] = [];
     for (const [id, anim] of this.anims) {
+      if (anim.typeId === 'turret') continue;
       const foot = footOf(state.board, anim);
       views.push({
         id,
@@ -244,6 +265,7 @@ export class Presenter {
         showHpBar: anim.typeId !== 'techpriest' && (anim.hpRatio < 1 || scanned),
         flash: anim.flashTimer / HIT_FLASH_SECONDS,
         alpha: anim.alpha,
+        tint: state.stasisNext && anim.typeId !== 'techpriest' ? 1 : undefined,
       });
     }
     return views;
@@ -259,6 +281,43 @@ export class Presenter {
     this.glows.push({ grid: { ...anim.grid }, color, age: 0 });
   }
   
+  private addFloater(pos: ScreenPos, damage: number, onPlayer: boolean): void {
+    this.floaters.push({
+      pos: nextFloaterPos(pos, this.floaters),
+      text: String(damage),
+      color: onPlayer ? DEEP_RED : BONE,
+      outline: onPlayer ? BONE : NEAR_BLACK,
+      age: 0,
+    });
+  }
+
+  private syncTurrets(state: CombatState): void {
+    const live = new Set(state.turrets.map((t) => t.id));
+    for (const turret of state.turrets) {
+      const existing = this.anims.get(turret.id);
+      if (existing) {
+        existing.grid = { ...turret.pos };
+        continue;
+      }
+      this.anims.set(turret.id, {
+        typeId: 'turret',
+        grid: { ...turret.pos },
+        facing: 0,
+        hpRatio: 1,
+        phase: 0,
+        moving: false,
+        flashTimer: 0,
+        alpha: 1,
+        fading: false,
+        lunge: { x: 0, y: 0 },
+        walk: null,
+      });
+    }
+    for (const id of [...this.anims.keys()]) {
+      if (id.startsWith('turret-') && !live.has(id)) this.anims.delete(id);
+    }
+  }
+
   private advanceWalk(anim: Anim, dt: number): void {
     const walk = anim.walk;
     if (!walk) return;
@@ -309,13 +368,11 @@ export class Presenter {
       target.flashTimer = HIT_FLASH_SECONDS;
     }
     target.hpRatio = this.finalHp.get(seg.targetId) ?? 0;
-    this.floaters.push({
-      pos: { x: seg.init!.targetFoot.x, y: seg.init!.targetFoot.y - FLOAT_LIFT },
-      text: String(seg.damage),
-      color: onPlayer ? DEEP_RED : BONE,
-      outline: onPlayer ? BONE : NEAR_BLACK,
-      age: 0,
-    });
+    this.addFloater(
+      { x: seg.init!.targetFoot.x, y: seg.init!.targetFoot.y - FLOAT_LIFT },
+      seg.damage,
+      onPlayer,
+    );
     if (seg.killed && !onPlayer) {
       target.fading = true;
     }
@@ -331,13 +388,7 @@ export class Presenter {
     }
     anim.hpRatio = this.finalHp.get(seg.unitId) ?? anim.hpRatio;
     const foot = footOf(board, anim);
-    this.floaters.push({
-      pos: { x: foot.x, y: foot.y - FLOAT_LIFT },
-      text: String(seg.amount),
-      color: onPlayer ? DEEP_RED : BONE,
-      outline: onPlayer ? BONE : NEAR_BLACK,
-      age: 0,
-    });
+    this.addFloater({ x: foot.x, y: foot.y - FLOAT_LIFT }, seg.amount, onPlayer);
     if (seg.killed && !onPlayer) {
       anim.fading = true;
     }
