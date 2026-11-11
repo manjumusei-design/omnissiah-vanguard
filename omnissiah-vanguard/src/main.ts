@@ -4,20 +4,17 @@ import {
   ENERGY_PER_TURN,
   MOVE_RANGE,
   PLAYER_MAX_HP,
-  STARTER_DECK,
   castRite,
-  chebyshev,
-  computeAllThrea t,
+  computeAllThreat,
   createCombat,
-  drawCards,  
+  drawCards,
   endPlayerTurn,
   enemyTurn,
-  losClear,
   movePlayer,
   type CombatState,
 } from './combat';
 import type { EnemyTypeId } from './enemies';
-import { loadEnemyArt, loadRig } from './rig';
+import { loadEnemyArt, loadRig, loadTurretArt } from './rig';
 import { loadBoardTextures } from './textures';
 import { toGrid, toScreen, type GridPos } from './projection';
 import { BRASS } from './palette';
@@ -28,23 +25,35 @@ import {
   type Scene,
 } from './render';
 import { Presenter } from './present';
+import {castHint, castTargeting, type CastTargeting } from './targeting';
 import { tileKey } from './threat';
+import {
+  DECK_CAP,
+  DOCTRINES,
+  addReward,
+  createRun,
+  doctrineHints,
+  recordWin,
+  rollRewards,
+  type RunState,
+} from './run';
 import { makeDemoUnits } from './units';
 import {
   flashEnergy,
+  setDeckLabel,
   setEnergy,
   setHand,
   setIntegrity,
+  setRewardCards,
   setMessage,
   type HandHandlers,
 } from './ui';
 
-const LAS_PRAYER_RANGE = 5;
-const RAISED_RANGE_BONUS = 1;
-const MSG_SECONDS = 1.6;
+const MSG_SECONDS = 2.4;
 
 const WIN_TEXT = 'SANCTIFIED - THE SHRINE IS CLEARED';
 const LOSE_TEXT = 'THE OMNISSIAH CLAIMS ANOTHER SERVITOR';
+const SPAWN = { x: 6, y: 4};
 
 const DIRS8: ReadonlyArray<readonly [number, number]> = [
   [1, 0], [-1, 0], [0, 1], [0, -1],
@@ -55,7 +64,7 @@ function requireElement<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);
   if (!el) throw new Error(`missing #${id} element`);
   return el as T;
-}b
+}
 
 function enemyPlacements(): { typeId: EnemyTypeId; pos: GridPos }[] {
   return makeDemoUnits()
@@ -63,18 +72,21 @@ function enemyPlacements(): { typeId: EnemyTypeId; pos: GridPos }[] {
     .map((u) => ({ typeId: u.typeId as EnemyTypeId, pos: { ...u.pos } }));
 }
 
+let run: RunState = createRun();
+
 function freshState(): CombatState {
   return drawCards(
-    createCombat(makeDemoBoard(), { x: 6, y: 4 }, enemyPlacements(), STARTER_DECK),
+    createCombat(makeDemoBoard(), SPAWN, enemyPlacements(), run.deck),
     Math.random,
   );
 }
 
 function computePaths(state: CombatState): Map<string, GridPos[]> {
   const occupied = new Set(
-    [state.player, ...state.enemies]
-      .filter((f) => f.hp > 0)
-      .map((f) => tileKey(f.pos.x, f.pos.y)),
+    [
+      ...[state.player, ...state.enemies].filter((f) => f.hp > 0),
+      ...state.turrets,
+    ].map((f) => tileKey(f.pos.x, f.pos.y)),
   );
   const start = tileKey(state.player.pos.x, state.player.pos.y);
   const paths = new Map<string, GridPos[]>([[start, []]]);
@@ -105,19 +117,28 @@ const endTurnButton = requireElement<HTMLButtonElement>('end-turn');
 const overlay = requireElement<HTMLElement>('overlay');
 const overlayText = requireElement<HTMLElement>('overlay-text');
 const restartButton = requireElement<HTMLButtonElement>('restart');
+const rewardPanel = requireElement<HTMLElement>('reward');
+const declineButton = requireElement<HTMLButtonElement>('decline');
 
 const camera: Camera = { x: 0, y: 0};
 let background: HTMLCanvasElement;
 
-function resize(): void {
-  canvas.width = canvas.clientWidth;
-  canvas.height = canvas.clientHeight;
-  background = createBackground(canvas.width, canvas.height);
+function fitCamera(): void {
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight;
+  if (canvas.width === w && canvas.height === h) return;
+  canvas.width = w;
+  canvas.height = h;
+  background = createBackground(w, h);
   const cols = state.board[0]?.length ?? 0;
   const rows = state.board.length;
   const center = toScreen({ x: (cols - 1) / 2, y: (rows - 1) / 2 });
-  camera.x = canvas.width / 2 - center.x;
-  camera.y = canvas.height / 2 - center.y;
+  camera.x = w / 2 - center.x;
+  camera.y = h / 2 - center.y;
+}
+
+function resize(): void {
+  fitCamera();
 }
 
 let state: CombatState = freshState();
@@ -141,7 +162,10 @@ function handCards(): CardDef[] {
 }
 
 function canAct(): boolean{
-  return state.turn === 'player' && !presenter.busy && overlay.classList.contains('hidden');
+  return state.turn === 'player'
+  && !presenter.busy
+  && overlay.classList.contains('hidden')
+  && rewardPanel.classList.contains('hidden');
 }
 
 function refreshHud(): void {
@@ -163,38 +187,19 @@ function showOverlay(text: string): void {
   overlay.classList.remove('hidden');
 }
 
+function showEndOverlay(): void {
+  if (state.turn === 'won') {
+    showOverlay(WIN_TEXT);
+    restartButton.textContent = 'CLAIM THE SPOILS';
+  } else if (state.turn === 'lost') {
+    showOverlay(LOSE_TEXT);
+    restartButton.textContent = 'BEGIN AGAIN';
+  }
+}
+
 function afterAction(): void {
   refreshHud();
-  if (state.turn === 'won') showOverlay(WIN_TEXT);
-  else if (state.turn === 'lost') showOverlay(LOSE_TEXT);
-}
-
-function lasPrayerRange(): number {
-  const tile = state.board[state.player.pos.y]?.[state.player.pos.x];
-  return LAS_PRAYER_RANGE + (tile === 'raised' ? RAISED_RANGE_BONUS : 0);
-}
-
-function lasPrayerTargetTiles(): Set<string> {
-  const keys = new Set<string>();
-  for (const enemy of state.enemies) {
-    if (chebyshev(state.player.pos, enemy.pos) > lasPrayerRange()) continue;
-    if (!losClear(state.board, state.player.pos, enemy.pos)) continue;
-    keys.add(tileKey(enemy.pos.x, enemy.pos.y));
-  }
-  return keys;
-}
-
-function cogStepTargetTiles(): Set<string> {
-  const occupied = new Set(
-    [state.player, ...state.enemies].map((f) => tileKey(f.pos.x, f.pos.y)),
-  );
-  const keys = new Set<string>();
-  for (const [dx, dy] of DIRS8) {
-    const p: GridPos = { x: state.player.pos.x + dx, y: state.player.pos.y + dy };
-    if (isBlocked(state.board, p.x, p.y) || occupied.has(tileKey(p.x, p.y))) continue;
-    keys.add(tileKey(p.x, p.y));
-  }
-  return keys;
+  showEndOverlay();
 }
 
 function enemyAt(g: GridPos) {
@@ -207,19 +212,24 @@ function invalidCast(text: string): void {
 }
 
 function cast(cardId: string, targetUnitId: string | null, targetTile: GridPos | null): void {
-  const handBefore = state.hand.length;
-  const result = castRite(state, cardId, targetUnitId, targetTile);
-  const spent = result.state !== state || result.state || result.state.hand.length !== handBefore;
-  if (!spent) {
-    invalidCast('INVALID TARGET');
+  if (state.energy < cardDef(cardId).cost) {
+    invalidCast('NOT ENOUGH ENERGY');
+    return;
+  }
+  const result = castRite(state, cardId, targetUnitId, targetTile, Math.random);
+  if (result.state === state) {
+    selectedCard = null;
+    invalidCast(castHint(cardId));
+    refreshHud();
     return;
   }
   state = result.state;
   selectedCard = null;
   refreshHud();
-  const opts = cardId === 'las-prayer'
+  const effect = cardDef(cardId).effect;
+  const opts = effect.kind === 'damage' && effect.shape === 'single' && effect.los
     ? { projectile: true }
-    : cardId === 'binharic-lash'
+    : effect.kind === 'damage' && effect.shape === 'arc1'
       ? { ring: true }
       : { priestGlowColor: BRASS };
   presenter.play(result.events, state, opts, afterAction);
