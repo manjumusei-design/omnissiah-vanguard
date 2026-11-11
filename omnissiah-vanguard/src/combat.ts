@@ -1,5 +1,5 @@
 import { isBlocked, type TileKind } from './board';
-import { CARDS } from './cards';
+import { CARDS, type CardDef, type CardEffect } from './cards';
 import { ENEMY_TYPES, type EnemyTypeId, type EnemyType } from './enemies';
 import type { GridPos } from './projection';
 import { tileKey } from './threat';
@@ -18,11 +18,17 @@ export interface Fighter {
   statuses: StatusId[];
 }
 
+export interface Turret {
+  id: string;
+  pos: GridPos;
+}
+
 export interface CombatState {
   board: TileKind[][];
   sanctified: string[];
   player: Fighter;
   enemies: Fighter[];
+  turrets: Turret[];
   turn: 'player' | 'enemy' | 'won' | 'lost';
   turnCount: number;
   energy: number;
@@ -30,6 +36,7 @@ export interface CombatState {
   hand: string[];
   discard: string[];
   scannedTurns: number;
+  stasisNext: boolean;
 }
 
 export type CombatEvent =
@@ -38,6 +45,7 @@ export type CombatEvent =
   | { type: 'damage'; unitId: string; amount: number; killed: boolean }
   | { type: 'status'; unitId: string; status: StatusId }
   | { type: 'tile'; key: string; kind: 'sanctify' }
+  | { type: 'summon'; unitId: string; pos: GridPos }
   | { type: 'turnEnd'; turn: CombatState['turn'] };
 
 export const MOVE_RANGE = 3;
@@ -47,15 +55,17 @@ export const HAZARD_DAMAGE = 2;
 export const RAISE_RANGE_BONUS = 1;
 export const SANCTIFIED_BONUS = 2;
 export const PLAYER_MAX_HP = 30;
-export const SCAN_TURNS = 2;
+export const TURRET_CAP = 3;
+export const TURRET_PLACE_RANGE = 2;
+export const TURRET_RANGE = 3;
+export const TURRET_DAMAGE = 2;
 
 const REAR_MULTIPLIER = 1.5;
 const CORRUPTED_DAMAGE = 2;
-const BLESSING_ARMOR = 2;
-const LAS_PRAYER_DAMAGE = 3;
-const LAS_PRAYER_RANGE = 5;
-const BINHARIC_LASH_DAMAGE = 3;
-const BIHARIC_LASH_RADIUS = 1;
+
+const FACING_DELTAS: ReadonlyArray<readonly [number, number]> = [
+  [0, 1], [1, 0], [0, -1], [-1, 0],
+];
 
 export const START_DECK: string[] = [
   'las-prayer', 'las-prayer', 'las-prayer',
@@ -160,6 +170,7 @@ export function createCombat(
     sanctified: [],
     player,
     enemies,
+    turrets: [],
     turn: 'player',
     turnCount: 1,
     energy: ENERGY_PER_TURN,
@@ -167,6 +178,7 @@ export function createCombat(
     hand: [],
     discard: [],
     scannedTurns: 0,
+    stasisNext: false,
   };
 }
   
@@ -180,6 +192,7 @@ function cloneState(state: CombatState): CombatState {
     sanctified: [...state.sanctified],
     player: cloneFighter(state.player),
     enemies: state.enemies.map(cloneFighter),
+    turrets: state.turrets.map((t) => ({ id: t.id, pos: { ...t.pos } })),
     deck: [...state.deck],
     hand: [...state.hand],
     discard: [...state.discard],
@@ -193,15 +206,58 @@ function findFighter(state: CombatState, id: string): Fighter | undefined {
 function isOccupied(state: CombatState, pos: GridPos, selfId: string): boolean {
   return [state.player, ...state.enemies].some(
     (f) => f.id !== selfId && f.hp > 0 && f.pos.x === pos.x && f.pos.y === pos.y,
-  );
+  ) || state.turrets.some((t) => t.pos.x === pos.x && pos.y === pos.y);
+}
+
+export function isTileFree(state: CombatState, pos: GridPos): boolean {
+  if (isBlocked(state.board, pos.x, pos.y)) return false;
+  return !isOccupied(state, pos, 'none');
 }
 
 function tileAt(board: TileKind[][], pos: GridPos): TileKind | undefined {
   return board[pos.y]?.[pos.x];
 }
 
+export function castRange(state: CombatState, range: number): number {
+  return range + (tileAt(state.board, state.player.pos) === 'raised' ? RAISED_RANGE_BONUS : 0);
+}
+
 function enemyStats(typeId: Fighter['typeId']): EnemyType {
   return ENEMY_TYPES[typeId as EnemyTypeId];
+}
+
+export function coneTiles(pos: GridPos, facing: Facing): GridPos[] {
+  const [fx, fy] = FACING_DELTAS[facing]!;
+  const ahead = { x: pos.x + fx, y: pos.y + fy };
+  const sx = fx === 0 ? 1 : 0;
+  const sy = fy === 0 ? 1: 0;
+  return [
+    ahead,
+    { x: ahead.x + sx, y: ahead.y + sy },
+    { x: ahead.x - sx, y: ahead.y - sy },
+  ];
+}
+
+export function lineTiles(board: TileKind[][], from: GridPos, range: number): GridPos[] {
+  const titles: GridPos[] = [];
+  for (const [dx, dy] of FACING_DELTAS) {
+    for (let i = 1; i <=range; i++) {
+      const tile = { x: from.x + dx * i, y: from.y + dy * i };
+      if (isBlocked(board, tile.x, tile.y)) break;
+      tiles.push(tile);
+    }
+  }
+  return tiles;
+}
+
+export function tilesWithin(center: GridPos, radius: number): GridPos[] {
+  const tiles: GridPos[] = [];
+  for (let dy = -radius; dy <= radius; dy++) {
+    for (let dx = -radius; dx <= radius; dx++) {
+      tiles.push({ x: center.x + dx, y: center.y + dy });
+    }
+  }
+  return tiles;
 }
 
 export function movePlayer(state: CombatState, path: GridPos[]): CombatState { 
@@ -223,20 +279,24 @@ export function movePlayer(state: CombatState, path: GridPos[]): CombatState {
   return next;
 }
 
+function drawOne(state: CombatState, rng: () => number): boolean {
+  if (state.deck.length === 0) {
+    if (state.deck.length === 0) return false;
+    const reshuffled: string[] = [];
+    while (state.discard.length > 0) {
+      const index = Math.floor(rng() * state.discard.length);
+      reshuffled.push(state.discard.splice(index, 1)[0]!);
+    }
+    state.deck = reshuffled;
+  }
+  const index = Math.floor(rng() * state.deck.length);
+  state.hand.push(...state.deck.splice(index, 1));
+  return true;
+}
+
 export function drawCards(state: CombatState, rng: () => number): CombatState {
   const next = cloneState(state);
-  while (next.hand.length < HAND_SIZE) {
-    if (next.deck.length === 0) {
-      if (next.discard.length === 0) break;
-      const reshuffled: string[] = [];
-      while (next.discard.length > 0) {
-        const index = Math.floor(rng() * next.discard.length);
-        reshuffled.push(next.discard.splice(index, 1)[0]!);
-      }
-      next.deck = reshuffled;
-    }
-    const index = Math.floor(rng() * next.deck.length);
-    next.hand.push(...next.deck.splice(index, 1));
+  while (next.hand.length < HAND_SIZE && drawOne(next, rng)) {
   }
   return next;
 }
@@ -246,13 +306,14 @@ export function castRite(
   cardId: string,
   targetUnitId: string | null,
   targetTile: GridPos | null,
+  rng: () => number = Math.random,
 ): { state: CombatState; events: CombatEvent[] } {
   if (state.turn !== 'player') return { state, events: [] };
   if (!state.hand.includes(cardId)) return { state, events: [] };
   const card = CARDS.find((c) => c.id === cardId);
   if (!card || state.energy < card.cost) return { state, events: [] };
 
-  const applied = applyRite(state, cardId, targetUnitId, targetTile);
+  const applied = applyEffect(state, card, targetUnitId, targetTile, rng);
   if (!applied) return { state, events: [] };
 
   const next = applied.state;
@@ -262,63 +323,217 @@ export function castRite(
     next.discard.push(cardId);
   }
   next.energy -= card.cost;
+  if (card.hpCost) {
+    next.player.hp = Math.max(0, next.player.hp - card.hpCost);
+    applied.events.push({
+      type: 'damage',
+      unitId: 'player',
+      amount: card.hpCost,
+      killed: next.player.hp === 0,
+    });
+    if (next.player.hp === 0) next.turn = 'lost';
+  }
   return {state: next, events: applied.events };
 }
 
-function applyRite(
+function applyEffect(
   state: CombatState,
-  cardId: string,
+  card: CardDef,
   targetUnitId: string | null,
   targetTile: GridPos | null,
+  rng: () => number,
 ): { state: CombatState; events: CombatEvent[] } | null {
-  switch (cardId) {
-    case 'las-prayer': {
-      const enemy = targetUnitId
-        ? state.enemies.find((e) => e.id === targetUnitId && e.hp > 0)
-        : undefined;
-      if (!enemy) return null;
-      const range = LAS_PRAYER_RANGE
-        + (tileAt(state.board, state.player.pos) === 'raised' ? RAISED_RANGE_BONUS : 0);
-      if (chebyshev(state.player.pos, enemy.pos) > range) return null;
-      if (!losClear(state.board, state.player.pos, enemy.pos)) return null;
-      return resolveAttack(state, state.player, enemy, LAS_PRAYER_DAMAGE);
-    }
-    case 'cog-step': {
-      if (!targetTile) return null;
-      if (chebyshev(state.player.pos, targetTile) !== 1) return null;
-      if (isBlocked(state.board, targetTile.x, targetTile.y)) return null;
-      if (isOccupied(state, targetTile, 'player')) return null;
+  const effect = card.effect;
+  switch (effect.kind) {
+    case 'damage': return applyDamageEffect(state, effect, targetUnitId, rng);
+    case 'heal': {
       const next = cloneState(state);
-      next.player.pos = { ...targetTile };
-      next.player.facing = facingFromDelta(targetTile.x - state.player.pos.x, targetTile.y - state.player.pos.y);
-      return { state: next, events: [{ type: 'move', unitId: 'player', path: [{ ...targetTile }] }] };
+      next.player.hp = Math.min(PLAYER_MAX_HP, next.player.hp + effect.amount);
+      return { state: next, events: [] };
     }
-    case 'binharic-lash': {
-      let cur = cloneState(state);
-      const events: CombatEvent[] = [];
-      for (const snapshot of state.enemies) {
-        if (chebyshev(snapshot.pos, state.player.pos) > BINHARIC_LASH_RADIUS) continue;
-        const enemy = cur.enemies.find((e) => e.id === snapshot.id);
-        if (!enemy || enemy.hp <= 0) continue;
-        const result = resolveAttack(cur, cur.player, enemy, BINHARIC_LASH_DAMAGE);
-        cur = result.state;
-        events.push(...result.events);
+    case 'armor': {
+      const next = cloneState(state);
+      next.player.armor += effect.amount;
+      return { state: next, events: [] };
+    }
+    case 'energy': {
+      const next = cloneState(state);
+      next.energy += effect.amount;
+      return { state: next, events: [] };
+    }
+    case 'draw': {
+      const next = cloneState(state);
+      for (let i = 0; i < effect.amount && drawOne(next, rng); i++) {
       }
-      return { state: cur, events };
-    }
-    case 'servo-skull': {
-      const next = cloneState(state);
-      next.scannedTurns = SCAN_TURNS;
       return { state: next, events: [] };
     }
-    case 'machine-blessing': {
+    case 'scan': {
       const next = cloneState(state);
-      next.player.armor += BLESSING_ARMOR;
+      next.scannedTurns = effect.turns;
       return { state: next, events: [] };
     }
-    default:
-      return null;
+    case 'sanctify': return applySanctify(state, effect, targetTile);
+    case 'summonTurret': return applySummonTurret(state, targetTile);
+    case 'pull': return applyPull(state, effect, targetUnitId);
+    case 'stasis': {
+      const next = cloneState(state);
+      next.stasisNext = true;
+      return { state: next, events: [] };
+    }
+    case 'moveStep': return applyMoveStep(state, targetTile);
   }
+}
+
+function applyDamageEffect(
+  state: CombatState,
+  effect: Extract<CardEffect, { kind: 'damage' }>,
+  targetUnitId: string | null,
+  rng: () => number,
+): { state: CombatState; events: CombatEvent[] } | null {
+  if (effect.shape === 'single') {
+    const enemy = targetUnitId
+      ? state.enemies.find((e) => e.id === targetUnitId && e.hp > 0)
+      : undefined;
+    if (!enemy) return null;
+    if (chebyshev(state.player.pos, enemy.pos) > castRange(state, effect.range)) return null;
+    if (effect.los && !losClear(state.board, state.player.pos, enemy.pos)) return null;
+    return strike(state, enemy, effect, rng);
+  }
+  let cur = cloneState(state);
+  const events: CombatEvent[] = [];
+  for (const snapshot of state.enemies) {
+    if (!inDamageShape(state, effect, snapshot.pos)) continue;
+    const enemy = cur.enemies.find((e) => e.id === snapshot.id);
+    if (!enemy || enemy.hp <= 0) continue;
+    const result = strike(cur, enemy, effects, rng);
+    cur = result.state;
+    events.push(...result.events);
+  }
+  return {state: cur, events };
+}
+
+function inDamageShape(
+  state: CombatState,
+  effect: Extract<CardEffect, { kind: 'damage' }>,
+  pos: GridPos,
+): boolean {
+  const player = state.player.pos;
+  switch (effect.shape) {
+    case 'single':
+      return false;
+    case 'line': {
+      if (pos.x !== player.x && pos.y !== player.y) return false;
+      if (chebyshev(player, pos) > castRange(state, effect.range)) return false;
+      return losClear(state.board, player, pos);
+    }
+    case 'cone':
+      return coneTiles(player, state.player.facing).some((t) => t.x === pos.x && t.y === pos.y);
+    case 'arc1':
+      return chebyshev(player, pos) === 1;
+  }
+}
+
+function strike(
+  cur: CombatState,
+  enemy: Fighter,
+  effect: Extract<CardEffect, { kind: 'damage' }>,
+  rng: () => number,
+): { state: CombatState; events: CombatEvent[] } {
+  const result = resolveAttack(cur, cur.player, enemy, effect.amount, rng, {
+    ignoreArmor: effect.ignoreArmor,
+  });
+  if (effect.corrupt) {
+    const survivor = result.state.enemies.find((e) => e.id === enemy.id);
+    if (survivor) {
+      survivor.statuses.push('corrupted');
+      result.events.push({ type: 'status', unitId: survivor.id, status: 'corrupted' });
+    }
+  }
+  return result;
+}
+
+function applySanctify(
+  state: CombatState,
+  effect: Extract<CardEffect, { kind: 'sanctify' }>,
+  targetTile: GridPos | null,
+): { state: CombatState; events: CombatEvent[] } | null {
+  let centers: GridPos[];
+  if (effect.shape === 'tile') {
+    if (!targetTile) return null;
+    if (chebyshev(state.player.pos, targetTile) > castRange(state, effect.range)) return null;
+    if (isBlocked(state.board, targetTile.x, targetTile.y)) return null;
+    centers = [targetTile];
+  } else {
+    centers = tilesWithin(state.player.pos, effect.range);
+  }
+  const next = cloneState(state);
+  const events: CombatEvent[] = [];
+  for (const tile of centers) {
+    if (isBlocked(state.board, tile.x, tile.y)) continue;
+    const key = tileKey(tile.x, tile.y);
+    if (next.sanctified.includes(key)) continue;
+    next.sanctified.push(key);
+    events.push({ type: 'tile', key, kind: 'sanctify' });
+  }
+  if (events.length === 0) return null;
+  return { state: next, events };
+}
+
+function applySummonTurret(
+  state: CombatState,
+  targetTile: GridPos | null,
+): { state: CombatState; events: CombatEvent[] } | null {
+  if (!targetTile) return null;
+  if (state.turrets.length >= TURRET_CAP) return null;
+  if (chebyshev(state.player.pos, targetTile) > castRange(state, TURRET_PLACE_RANGE)) return null;
+  if (!isTileFree(state, targetTile)) return null;
+  const next = cloneState(state);
+  const turret: Turret = { id: `turret-${next.turrets.length + 1}`, pos: { ...targetTile } };
+  next.turrets.push(turret);
+  return { state: next, events: [{ type: 'summon', unitId: turret.id, pos: { ...turret.pos } }] };
+}
+
+function applyPull(
+  state: CombatState,
+  effect: Extract<CardEffect, { kind: 'pull' }>,
+  targetUnitId: string | null,
+): { state: CombatState; events: CombatEvent[] } | null {
+  const enemy = targetUnitId
+    ? state.enemies.find((e) => e.id === targetUnitId && e.hp > 0)
+    : undefined;
+  if (!enemy) return null;
+  if (chebyshev(state.player.pos, enemy.pos) > castRange(state, effect.range)) return null;
+  if (!losClear(state.board, state.player.pos, enemy.pos)) return null;
+
+  const next = cloneState(state);
+  const pulled = next.enemies.find((e) => e.id === enemy.id)!;
+  const dx = next.player.pos.x - pulled.pos.x;
+  const dy = next.player.pos.y - pulled.pos.y;
+  const step = Math.abs(dx) >= Math.abs(dy)
+    ? { x: Math.sign(dx), y: 0 }
+    : { x: 0, y: Math.sign(dy) };
+  const dest = { x: pulled.pos.x + step.x, y: pulled.pos.y + step.y };
+  if (!isTileFree(next, dest)) return { state: next, events: [] };
+  pulled.facing = facingFromDelta(step.x, step.y);
+  pulled.pos = dest;
+  return { state: next, events: [{ type: 'move', unitId: pulled.id, path: [{ ...dest }] }] };
+}
+
+function applyMoveStep(
+  state: CombatState,
+  targetTile: GridPos | null,
+): { state: CombatState; events: CombatEvent[] } | null {
+  if (!targetTile) return null;
+  if (chebyshev(state.player.pos, targetTile) !==1) return null;
+  if (!isTileFree(state, targetTile)) return null;
+  const next = cloneState(state);
+  next.player.pos = {...targetTile };
+  next.player.facing = facingFromDelta(targetTile.x - state.player.pos.x, targetTile.y - state.player.pos.y);
+  return { state: next, events: [{ type: 'move', unitId: 'player', path: [{ ...targetTile }] }] };
+}
+
+export interface AttackOptions {
+  ignoreArmor?: boolean;
 }
 
 export function resolveAttack(
@@ -327,6 +542,7 @@ export function resolveAttack(
   target: Fighter,
   base: number,
   rng: () => number = Math.random,
+  opts: AttackingOptions = {},
 ): { state: CombatState; events: CombatEvent[] } {
   const next = cloneState(state);
   const attackerRef = findFighter(next, attacker.id);
@@ -355,13 +571,7 @@ export function resolveAttack(
   ) {
     damage += SANCTIFIED_BONUS;
   }
-  const absorbed = Math.min(actualTarget.armor, damage);
-  actualTarget.armor -= absorbed;
-  actualTarget.hp = Math.max(0, actualTarget.hp - (damage - absorbed));
-  const killed = actualTarget.hp === 0;
-  if (killed && actualTarget.id !== 'player') {
-    next.enemies = next.enemies.filter((e) => e.id !== actualTarget.id);
-  }
+  const killed = applyWound(next, actualTarget, damage, opts.ignoreArmor ?? false);
   if (next.enemies.length === 0) {
     next.turn = 'won';
   }
@@ -377,10 +587,33 @@ export function resolveAttack(
   return { state: next, events };
 }
 
+function applyWound(state: CombatState, target: Fighter, damage: number, ignoreArmor: boolean): boolean {
+  const absorbed = ignoreArmor ? 0 : Math.min(target.armor, damage);
+  target.armor -= absorbed;
+  target.hp = Math.max(0, target.hp - (damage - absorbed));
+  if (target.hp === 0 && target.id !== 'player') {
+    state.enemies = state.enemies.filter((e) => e.id !== target.id);
+  }
+  return target.hp === 0;
+}
+
+function nearestTurretTarget(state: CombatState, from: GridPos): Fighter | null {
+  let best: Fighter | null = null;
+  for (const enemy of state.enemies) {
+    if (enemy.hp <= 0) continue;
+    if (chebyshev(enemy.pos, from) > TURRET_RANGE) continue;
+    if (!losClear(state.board, from, enemy.pos)) continue;
+    if (!best || betterCandidate(enemy.pos, best.pos, from) === enemy.pos) best = enemy;
+  }
+  return best;
+}
+
 export function endPlayerTurn(state: CombatState): { state: CombatState; events: CombatEvent[] } {
   if (state.turn !== 'player') return { state, events: [] };
   const next = cloneState(state);
   next.turn = 'enemy';
+  next.discard.push(...next.hand);
+  next.hand = [];
   const events: CombatEvent[] = [{ type: 'turnEnd', turn: 'enemy' }];
 
   if (tileAt(next.board, next.player.pos) === 'hazard') {
@@ -407,6 +640,8 @@ export function enemyTurn(
   if (state.turn !== 'enemy') return { state, events: [] };
   let cur = cloneState(state);
   const events: CombatEvent[] = [];
+  const stasis = cur.stasisNext;
+  cur.stasisNext = false;
 
   for (const snapshot of state.enemies) {
     const enemy = cur.enemies.find((e) => e.id === snapshot.id);
@@ -417,13 +652,16 @@ export function enemyTurn(
       continue;
     }
     const stats = enemyStats(enemy.typeId);
+    const effStats = stasis
+      ? { ...stats, moveRange: Math.max(1, stats.moveRange - 1) }
+      : stats;
     const dist = chebyshev(enemy.pos, cur.player.pos);
-    if(dist <= stats.attackRange && (stats.attackRange === 1 || losClear(cur.board, enemy.pos, cur.player.pos))) {
-      const result = resolveAttack(cur, enemy, cur.player, stats.attackDamage, rng);
+    if (dist <= effStats.attackRange && (effStats.attackRange === 1 || losClear(cur.board, enemy.pos, cur.player.pos))) {
+      const result = resolveAttack(cur, enemy, cur.player, effStats.attackDamage, rng);
       cur = result.state;
       events.push(...result.events);
     } else {
-      const path = approach(cur, enemy, stats);
+      const path = approach(cur, enemy, effStats);
       if (path.length > 0) {
         enemy.pos = path[path.length - 1]!;
         enemy.facing = facingFromDelta(cur.player.pos.x - enemy.pos.x, cur.player.pos.y - enemy.pos.y);
@@ -438,6 +676,27 @@ export function enemyTurn(
       }
     }
     if (cur.player.hp <= 0 || cur.enemies.length === 0) break;
+  }
+
+  if (cur.player.hp > 0) {
+    for (const turret of cur.turrets) {
+      const target = nearestTurretTarget(cur, turret.pos);
+      if (!target) continue;
+      const next = cloneState(cur);
+      const victim = next.enemies.find((e) => e.id === target.id)!;
+      const killed = applyWound(next, victim, TURRET_DAMAGE, false);
+      events.push({
+        type: 'attack',
+        attackerId: turret.id,
+        targetId: victim.id,
+        from: { ...turret.pos },
+        damage: TURRET_DAMAGE,
+        rear: false,
+        killed,
+      });
+      cur = next;
+      if (cur.enemies.length === 0) break;
+    }
   }
 
   if (cur.player.hp <= 0) {
@@ -493,8 +752,9 @@ function betterCandidate(a: GridPos, b: GridPos, playerPos: GridPos): GridPos {
   return a.x < b.x ? a: b;1
 }
 
-export function threatFor(state: CombatState, enemy: Fighter): set<string> {
+export function threatFor(state: CombatState, enemy: Fighter): Set<string> {
   const stats = enemyStats(enemy.typeId);
+  const moveRange = state.stasisNext ? Math.max(1, stats.moveRange - 1) : stats.moveRange;
   const occupied = [state.player, ...state.enemies.filter((e) => e.id !== enemy.id)]
   .filter((f) => f.hp >0)
   .map((f) => f.pos);

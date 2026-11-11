@@ -235,30 +235,27 @@ function cast(cardId: string, targetUnitId: string | null, targetTile: GridPos |
   presenter.play(result.events, state, opts, afterAction);
 }
 
-function castAtClick(g: GridPos): void {
-  const cardId = selectedCard;
-  if (!cardId) return;
+function resolveCastClick(cardId: string, g: GridPos, fromDrop: boolean): void {
+  const targets = castTargeting(state, cardId);
   const key = tileKey(g.x, g.y);
-  if (cardId === 'las-prayer') {
-    const enemy = enemyAt(g);
-    if (enemy && lasPrayerTargetTiles().has(key)) {
-      cast(cardId, enemy.id, null);
-    } else {
-      selectedCard = null;
-      refreshHud();
-    }
+  const enemy = enemyAt(g);
+  if (enemy && targets.enemies.has(key)) {
+    cast(cardId, enemy.id, g);
     return;
-}
-if (cardId === 'cog-step') {
-  if (cogStepTargetTiles().has(key)) {
+  }
+  if (targets.tiles.has(key)) {
     cast(cardId, null, g);
-  } else {
+    return;
+  }
+  if (targets.tiles.size === 0 && targets.enemies.size === 0) {
+    cast(cardId, null, null);
+    return;
+  }
+  invalidCast(castHint(cardId));
+  if (!fromDrop) {
     selectedCard = null;
     refreshHud();
   }
-  return;
-}
-cast(cardId, null, null);
 }
 
 canvas.addEventListener('pointerdown', (e) => {
@@ -269,7 +266,7 @@ canvas.addEventListener('pointerdown', (e) => {
   });
   if (!canAct()) return;
   if (selectedCard) {
-    castAtClick(g);
+    resolveCastClick(selectedCard, g, false);
     return;
   }
   const path = paths.get(tileKey(g.x, g.y));
@@ -299,26 +296,7 @@ const handHandlers: HandHandlers = {
   },
   onDrop(cardId, canvasX, canvasY) {
     if (!canAct()) return;
-    const g = toGrid({ x: canvasX - camera.x, y: canvasY - camera.y });
-    const key = tileKey(g.x, g.y);
-    if (cardId === 'las-prayer') {
-      const enemy = enemyAt(g);
-      if (enemy && lasPrayerTargetTiles().has(key)) {
-        cast(cardId, enemy.id, null);
-      } else {
-        invalidCast('NO TARGET IN RANGE');
-      }
-      return;
-    }
-    if (cardId === 'cog-step') {
-      if (cogStepTargetTiles().has(key)) {
-        cast(cardId, null, g);
-      } else {
-        invalidCast('NOT AN ADJACENT TILE');
-      }
-      return;
-    }
-    cast(cardId, null, null);
+    resolveCastClick(cardId, toGrid({ x: canvasX - camera.x, y: canvasY - camera.y }), true);
   },
   onSelect(cardId) {
     if (!canAct()) return;
@@ -338,21 +316,16 @@ endTurnButton.addEventListener('click', () => {
   if (state.turn === 'lost') {
     presenter.play(ended.events, state, {}, () => {
       refreshHud();
-      showOverlay(LOSE_TEXT);
+      showEndOverlay();
     });
     return;
   }
   const result = enemyTurn(state, Math.random);
-  state = result.statel
+  state = result.state;
   presenter.play([...ended.events, ...result.events], state, {}, () => {
-    if (state.turn === 'won') {
+    if (state.turn !== 'player') {
       refreshHud();
-      showOverlay(WIN_TEXT);
-      return;
-    }
-    if (state.turn === 'lost') {
-      refreshHud();
-      showOverlay(LOSE_TEXT);
+      showEndOverlay();
       return;
     }
     state = drawCards(state, Math.random);
@@ -365,18 +338,63 @@ threatButton.addEventListener('click', () => {
   threatButton.textContent = showThreat ? 'THREAT: ON' : 'THREAT: OFF';
 });
 
-restartButton.addEventListener('click', () => {
+function startNextFight(): void {
   state = freshState();
   selectedCard = null;
   presenter.reset(state);
   overlay.classList.add('hidden');
+  rewardPanel.classList.add('hidden');
+  restartButton.textContent = 'BEGIN AGAIN';
   say('');
   refreshHud();
+}
+
+restartButton.addEventListener('click', () => {
+  if (state.turn === 'won') {
+    run = recordWin(run);
+    overlay.classList.add('hidden');
+    openRewards();
+    return;
+  }
+  run = createRun();
+  startNextFight();
+});
+
+function openRewards(): void {
+  setDeckLabel(run.deck.length, DECK_CAP);
+  const rolled = rollRewards(run.deck, doctrineHints(run.deck), Math.random);
+  if (rolled.length === 0) {
+    startNextFight();
+    say('DECK AT CAP - THE FORGE OFFERS NOTHING');
+    return;
+  }
+  setRewardCards(
+    rolled.map((id) => ({
+      card: cardDef(id),
+      doctrine: DOCTRINES[id] ?? null,
+    })),
+    {
+      onTake(cardId) {
+        run = addReward(run, cardId);
+        startNextFight();
+      },
+      onDecline() {
+        startNextFight();
+      },
+    },
+  );
+  rewardPanel.classList.remove('hidden');
+}
+
+declineButton.addEventListener('click', () => {
+  if (rewardPanel.classList.contains('hidden')) return;
+  startNextFight();
 });
 
 resize();
 window.addEventListener('resize', resize);
-await Promise.all([loadRig(), loadEnemyArt(), loadBoardTextures()]);
+new ResizeObserver(fitCamera).observe(canvas);
+await Promise.all([loadRig(), loadEnemyArt(), loadTurretArt(), loadBoardTextures()]);
 refreshHud();
 
 let last = performance.now();
@@ -387,11 +405,9 @@ function frame(now: number): void {
 
   presenter.update(dt, state.board);
   const scanned = state.scannedTurns > 0;
-  const targets = selectedCard === 'las-prayer'
-    ? { tiles: new Set<string>(), enemies: lasPrayerTargetTiles() }
-    : selectedCard === 'cog-step'
-      ? { tiles: cogStepTargetTiles(), enemies: new Set<string>() }
-      : { tiles: new Set<string>(), enemies: new Set<string>() };
+  const targets: CastTargeting = selectedCard
+    ? castTargeting(state, selectedCard)
+    : { tiles: new Set(), enemies: new Set() };
   const fx = presenter.effects();
   const scene: Scene = {
     board: state.board,
@@ -399,6 +415,8 @@ function frame(now: number): void {
     showThreat: showThreat || scanned,
     reachable: selectedCard || presenter.busy ? new Set() : new Set(paths.keys()),
     units: presenter.unitViews(state, scanned),
+    turrets: state.turrets.map((t) => t.pos),
+    sanctified: new Set(state.sanctified),
     targetTiles: targets.tiles,
     targetEnemies: targets.enemies,
     floaters: fx.floaters,
@@ -411,4 +429,69 @@ function frame(now: number): void {
   requestAnimationFrame(frame);
 }
 
+interface OmvTestHook {
+  load(setup: {
+    deck: string[];
+    hand: string[];
+    energy?: number;
+    hp?: number;
+    facing?: number;
+    placements?: { typeId: EnemyTypeId; pos: GridPos }[];
+  }): void;
+  give(cardId: string): void;
+  read(): unknown;
+}
+
+declare global {
+  interface Window {
+    _omvTest?: OmvTestHook;
+  }
+}
+
+window.__omvTest = {  //ai helped me write this function fully to test stuff
+  load(setup) {
+    const combat = createCombat(
+      makeDemoBoard(),
+      SPAWN,
+      setup.placements ?? enemyPlacements(),
+      setup.deck,
+    );
+    combat.hand = [...setup.hand];
+    combat.energy = setup.energy ?? ENERGY_PER_TURN;
+    combat.player.hp = setup.hp ?? PLAYER_MAX_HP;
+    combat.player.facing = (setup.facing ?? 0) as CombatState['player']['facing'];
+    state = combat;
+    presenter.reset(state);
+    refreshHud();
+  },
+  give(cardId: string) {
+    state.hand.push(cardId);
+    refreshHud();
+  },
+  read() {
+    return {
+      busy: presenter.busy,
+      turn: state.turn,
+      turnCount: state.turnCount,
+      energy: state.energy,
+      hp: state.player.hp,
+      armor: state.player.armor,
+      facing: state.player.facing,
+      playerPos: { ...state.player.pos },
+      hand: [...state.hand],
+      deck: [...state.deck],
+      discard: [...state.discard],
+      runDeck: [...run.deck],
+      fightsWon: run.fightsWon,
+      sanctified: [...state.sanctified],
+      stasisNext: state.stasisNext,
+      threatCount: computeAllThreat(state).size,
+      scannedTurns: state.scannedTurns,
+      enemies: state.enemies.map((e) => ({ id: e.id, hp: e.hp, pos: e.pos, facing: e.facing })),
+      turrets: state.turrets.map((t) => ({ id: t.id, pos: t.pos })),
+      rewardHidden: rewardPanel.classList.contains('hidden'),
+      overlayText: overlay.classList.contains('hidden') ? null : overlayText.textContent,
+    };
+  },
+};
 requestAnimationFrame(frame);
