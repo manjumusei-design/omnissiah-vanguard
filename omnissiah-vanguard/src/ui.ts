@@ -1,10 +1,14 @@
-import type {CardDef, CardKind} from './cards';
+import { CARDS, type CardDef, type CardKind } from './cards';
+import { DOCTRINES, type DoctrineId } from './run';
 
 const DRAG_THRESHOLD_PX = 6;
+const INTEGRITY_SEGMENTS = 10;
+const KIND_ORDER: CardKind[] = ['Rite', 'Benediction', 'Ritual', 'Protocol'];
+const ART_ROOT = '/art/processed/';
 
 export interface HandHandlers {
-	onLift(cardId: string): void;
-	onLand(cardId: string): void;
+  onLift(cardId: string): void;
+  onLand(cardId: string): void;
   onDrop(cardId: string, canvasX: number, canvasY: number): void;
   onSelect(cardId: string): void;
 }
@@ -12,10 +16,6 @@ export interface HandHandlers {
 export function energyLabel(current: number, max: number): string {
   if (current > max) return `ENERGY ${current} (+${current - max})`;
   return `ENERGY ${current}/${max}`;
-}
-
-export function setEnergy(current: number, max: number): void {
-  requireElement('energy').textContent = energyLabel(current, max);
 }
 
 export interface EnergyPips {
@@ -229,11 +229,6 @@ function showTip(el: HTMLElement, card: CardDef, kindLabel: string): void {
 
 function hideTip(): void {
   tip().classList.add('hidden');
-}
-
-function attachTip(el: HTMLElement, card: CardDef, kindLabel: string): void {
-  el.addEventListener('pointerenter', () => showTip(el, card, kindLabel));
-  el.addEventListener('pointerleave', hideTip);
 }
 
 function attachTip(el: HTMLElement, card: CardDef, kindLabel: string): void {

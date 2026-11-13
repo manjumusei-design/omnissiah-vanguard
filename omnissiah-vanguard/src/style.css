@@ -65,23 +65,77 @@ body {
 }
 
 #energy {
-  color: var(--signal-green);
-  font-weight: bold;
-  letter-spacing: 1px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 70px;
 }
 
-#energy.flash {
-  animation: energy-flash 0.35s linear;
+#energy .pip {
+  position: relative;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--signal-green);
+  border: 1px solid var(--void-dark);
+  box-shadow: inset 0 0 0 1px var(--near-black);
 }
 
-@keyframes energy-flash {
-  0%, 100% { color: var(--signal-green); }
-  30%, 70% { color: var(--deep-red); }
+#energy .pip::after {
+  content: "";
+  position: absoulute;
+  inset: 3px;
+  border-radius: 50%;
+  background: varr(--void-dark);
+}
+
+#energy .pip.spent {
+  background: var(--slate-dark);
+}
+
+#energy .pip.bonus {
+  background: var(--brass);
+  box-shadow: inset 0 0 0 1px var(--near-black), 0 0 5px var(--brass);
+}
+
+#energy.flash .pip.lit{
+  animation: pip-flash 0.35s linear;
+}
+
+@keyframes pip-flash {
+  0%, 100% { background: var(--signal-green); }
+  30%, 70% { background: var(--deep-red); }
 }
 
 #integrity {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   color: var(--bone);
   letter-spacing: 1px;
+}
+
+#integrity .bar {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--dark-crimson);
+  border: 1px solid var(--brass);
+}
+
+#integrity .seg {
+  width: 7px;
+  height: 10px;
+  background: var(--dark-crimson);
+}
+
+#integrity .seg.filled {
+  background: var(--deep-red);
+}
+
+#integrity .armor {
+  color: var(--brass);
+  font-weight: bold;
 }
 
 #msg {
@@ -92,36 +146,50 @@ body {
 }
 
 #hud button {
-  background: var(--deep-red);
-  color: var(--bone);
-  border: 1px solid var(--brass);
+  background: var(--parchment-dark);
+  color: var(--near-black);
+  border: 2px solid var(--brass);
+  box-shadow: inset 0 0 0 1px var(--dark-crimson);
   font-family: inherit;
   font-size: 11px;
+  font-weight: bold;
   letter-spacing: 1px;
   padding: 4px 10px;
   cursor: pointer;
 }
 
 #hud button:hover {
-  background: var(--dark-crimson);
+  background: var(--bone);
 }
 
 #hand {
   display: flex;
   justify-content: center;
   gap: 14px;
-  min-height: 118px;
+  min-height: 216px;
 }
 
 .card {
-  width: 152px;
+  position: relative;
+  width: 168px;
   background: var(--bone);
-  border: 2px solid var(--dark-crimson);
   color: var(--near-black);
-  padding: 6px 8px 8px;
+  border: 12px solid transparent;
+  border-image: url('/art/processed/card-frame.png') 30 fill / 12px stretch;
+  padding: 2px 6px 6px;
   cursor: grab;
   user-select: none;
   touch-action: none;
+}
+
+.card::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--doctrine-color, var(--ash-gray));
 }
 
 .card:hover:not(.lifted):not(.selected) {
@@ -135,11 +203,42 @@ body {
 }
 
 .card.selected {
-  border-color: var(--brass);
+  outline: 2px solid var(--brass);
 }
 
 .card.dead {
   opacity: 0.45;
+}
+
+.card .art {
+  display: block;
+  width: 120px;
+  height: 90px;
+  margin: 0 auto 4px;
+  background-color: var(--parchment-dark);
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+}
+
+.card .name {
+  display: block;
+  text-align: center;
+  text-transform: uppercase;
+  font-variant: small-caps;
+  font-weight: bold;
+  font-size: 12px;
+  border-bottom: 1px solid var(--parchment-dark);
+}
+
+.card.kind {
+  display: block;
+  text-align: center;
+  font-size: 9px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--deep-red);
+  margin: 2px 0 3px;
 }
 
 .card .cost {
@@ -160,22 +259,8 @@ body {
   font-weight: bold;
 }
 
-.card .name {
-  font-variant: small-caps;
-  font-weight: bold;
-  margin-left: 6px;
-}
-
-.card .kind {
-  display: block;
-  font-size: 9px;
-  letter-spacing: 2px;
-  color: var(--deep-red);
-  margin: 3px 0;
-}
-
 .card .blurb {
-  margin: 0;
+  margin: 3px 0 0;
   font-size: 10px;
   line-height: 1.3;
   color: var(--void-dark);
@@ -276,6 +361,12 @@ body {
   margin: 0 0 12px;
   color: var(--signal-green);
   letter-spacing: 1px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+#reward-deck:hover {
+  color: var(--pale-green);
 }
 
 #reward-cards {
@@ -319,3 +410,62 @@ body {
 #decline:hover {
   background: var(--dark-crimson);
 }
+
+#deck-viewer {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 15;
+}
+
+#deck-viewer.hidden {
+  display: none;
+}
+
+#deck-viewer::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--near-black);
+  opacity: 0.78;
+}
+
+#deck-viewer-box {
+  position: relative;
+  background: var(--void-dark);
+  border: 2px solid var(--brass);
+  padding: 20px 28px;
+  text-align: center;
+}
+
+#deck-viewer-title {
+  margin: 0 0 10px;
+  letter-spacing: 2px;
+  font-weight: bold;
+}
+
+#deck-viwer-list {
+  max-height: 50vh;
+  min-width: 200px;
+  overflow-y: auto;
+  text-align: left;
+  margin-bottom: 14px;
+}
+
+.deck-kind {
+  margin: 8px 0 2px;
+  color: var(--brass);
+  font-weight: bold;
+  letter-spacing: 2px;
+  font-size: 10px;
+}
+
+.deck-entry {
+  margin: 0;
+  color: var(--bone);
+  font-size: 11px;
+}
+
+
