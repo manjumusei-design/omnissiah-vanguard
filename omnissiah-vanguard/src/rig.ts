@@ -252,6 +252,7 @@ export function drawShadow(
 
 const enemyArt: Record<EnemyTypeId, ArtImage | null> = {
   scarab: null,
+  'scarab-half': null,
   warrior: null,
   immortal: null,
   wraith: null,
@@ -426,7 +427,20 @@ export function drawRig(
   ctx.restore();
 }
 
+const paintScarab = (ctx: CanvasRenderingContext2D): void => {
+  for (const lx of [11, 15, 19]) {
+    drawPixelRect(ctx, lx, 29, 1, 2, GUNMETAL);
+  }
+  outlinedRect(ctx, 11, 22, 10, 7, TOMB_TEAL);
+  drawPixelRect(ctx, 13, 23, 2, 5, SLATE_DARK);
+  drawPixelRect(ctx, 17, 23, 2, 5, SLATE_DARK);
+  drawPixelRect(ctx, 21, 23, 2, 4, GUNMETAL);
+  drawPixelRect(ctx, 22, 24, 1, 1, PALE_GREEN);
+};
+
 const enemyFallbackPainters: Record<EnemyTypeId, (ctx: CanvasRenderingContext2D) => void> = {
+  scarab: paintScarab,
+  'scarab-half': paintScarab,
   warrior: (ctx) => {
     outlinedRect(ctx, 12, 24, 3, 5, GUNMETAL);
     outlinedRect(ctx, 17, 24, 3, 5, GUNMETAL);
@@ -439,16 +453,6 @@ const enemyFallbackPainters: Record<EnemyTypeId, (ctx: CanvasRenderingContext2D)
     outlinedRect(ctx, 13, 6, 6, 7, GUNMETAL);
     drawPixelRect(ctx, 13, 8, 6, 2, SIGNAL_GREEN);
     drawPixelRect(ctx, 15, 8, 2, 2, PALE_GREEN);
-  },
-  scarab: (ctx) => {
-    for (const lx of [11, 15, 19]) {
-      drawPixelRect(ctx, lx, 29, 1, 2, GUNMETAL);
-    }
-    outlinedRect(ctx, 11, 22, 10, 7, TOMB_TEAL);
-    drawPixelRect(ctx, 13, 23, 2, 5, SLATE_DARK);
-    drawPixelRect(ctx, 17, 23, 2, 5, SLATE_DARK);
-    drawPixelRect(ctx, 21, 23, 2, 4, GUNMETAL);
-    drawPixelRect(ctx, 22, 24, 1, 1, PALE_GREEN);
   },
   immortal: (ctx) => {
     outlinedRect(ctx, 11, 24, 3, 5, GUNMETAL);

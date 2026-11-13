@@ -1,6 +1,6 @@
 import { PLAYER_MAX_HP, facingFromDelta, type CombatEvent, type CombatState, type Fighter } from './combat';
 import { ENEMY_TYPES, type EnemyTypeId } from './enemies';
-import { BONE, BRASS, DEEP_RED, NEAR_BLACK } from './palette';
+import { BONE, BRASS, DEEP_RED, NEAR_BLACK, SIGNAL_GREEN } from './palette';
 import { PRIEST_FOOT_OFFSET, TURRET_FOOT_OFFSET, tileFoot, type FloaterView, type GlowView, type ProjectileView, type UnitView } from './render';
 import type { GridPos, ScreenPos } from './projection';
 import type { TileKind } from './board';
@@ -8,6 +8,7 @@ import type { Facing, UnitTypeId } from './units';
 
 export const PLAYER_STEP_SECONDS = 0.25;
 const ENEMY_STEP_SECONDS = 0.15;
+const PUSH_SECONDS = 0.15;
 const STRIKE_SECONDS = 0.2;
 const DAMAGE_HOLD_SECONDS = 0.35;
 const PROJECTILE_SECONDS = 0.15;
@@ -52,6 +53,7 @@ interface Anim {
   flashTimer: number;
   alpha: number;
   fading: boolean;
+  birth: boolean;
   lunge: ScreenPos;
   walk: { path: GridPos[]; index: number; timer: number; stepTime: number } | null;
 }
@@ -76,6 +78,7 @@ type Seg =
       init: StrikeInit | null;
     }
   | { kind: 'damage'; anim: Anim; unitId: string; amount: number; killed: boolean; timer: number; hit: boolean }
+  | { kind: 'spawn'; unitId: string; puff: boolean; timer: number }
   | { kind: 'pause'; timer: number; duration: number };
 
 function maxHpOf(fighter: Fighter): number {
@@ -118,7 +121,7 @@ export class Presenter {
   }
 
   snap(state: CombatState): void {
-    this.syncTurrets(state)
+    this.syncTurrets(state);
     for (const fighter of [state.player, ...state.enemies]) {
       const existing = this.anims.get(fighter.id);
       const typeId: UnitTypeId = fighter.id === 'player' ? 'techpriest' : fighter.typeId;
@@ -140,6 +143,7 @@ export class Presenter {
           flashTimer: 0,
           alpha: 1,
           fading: false,
+          birth: false,
           lunge: { x: 0, y: 0 },
           walk: null,
         });
@@ -203,6 +207,30 @@ export class Presenter {
           timer: 0,
           hit: false,
         });
+      } else if (event.type === 'spawn') {
+        const fighter = final.enemies.find((f) => f.id === event.unitId);
+        if (!fighter) continue;
+        this.anims.set(event.unitId, {
+          typeId: fighter.typeId,
+          grid: { ...event.pos },
+          facing: fighter.facing,
+          hpRatio: 1,
+          phase: 0,
+          moving: false,
+          flashTimer: 0,
+          alpha: 0,
+          fading: false,
+          birth: false,
+          lunge: { x: 0, y: 0 },
+          walk: null,
+        });
+        segs.push({ kind: 'spawn', unitId: event.unitId, puff: false, timer: 0 });
+      } else if (event.type === 'push') {
+        const anim = this.anims.get(event.unitId);
+        if (!anim) continue;
+        anim.walk = { path: [{ ...event.to }], index: 0, timer: 0, stepTime: PUSH_SECONDS };
+        anim.moving = true;
+        segs.push({ kind: 'walk', anim });
       }
     }
     this.segs = segs;
@@ -219,6 +247,9 @@ export class Presenter {
       if (anim.flashTimer > 0) anim.flashTimer = Math.max(0, anim.flashTimer - dt);
       if (anim.fading) {
         anim.alpha = Math.max(0, anim.alpha - dt / FADE_SECONDS);
+      } else if (anim.birth) {
+        anim.alpha = Math.min(1, anim.alpha + dt / FADE_SECONDS);
+        if (anim.alpha >= 1) anim.birth = false;
       } else if (!anim.walk) {
         anim.phase = (anim.phase + dt * 0.6) % 1;
       }
@@ -309,6 +340,7 @@ export class Presenter {
         flashTimer: 0,
         alpha: 1,
         fading: false,
+        birth: false,
         lunge: { x: 0, y: 0 },
         walk: null,
       });
@@ -423,6 +455,16 @@ export class Presenter {
       }
       const hold = seg.killed && seg.unitId !== 'player' ? FADE_SECONDS : DAMAGE_HOLD_SECONDS;
       if (seg.timer >= hold) this.segs.shift();
+    } else if (seg.kind === 'spawn') {
+      seg.timer += dt;
+      if (!seg.puff) {
+        seg.puff = true;
+        const anim = this.anims.get(seg.unitId);
+        if (anim) anim.birth = true;
+        const grid = anim ? anim.grid : null;
+        if (grid) this.glows.push({ grid: { ...grid }, color: SIGNAL_GREEN, age: 0 });
+      }
+      if (seg.timer >= FADE_SECONDS) this.segs.shift();
     } else {
       seg.timer = dt;
       if (seg.timer >= seg.duration) this.segs.shift();

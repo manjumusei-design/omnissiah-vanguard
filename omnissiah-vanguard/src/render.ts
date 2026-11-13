@@ -79,6 +79,13 @@ export interface GlowView {
   age: number;
 }
 
+export interface IntentView {
+  path: GridPos[];
+  destination: GridPos | null;
+  target: GridPos | null;
+  strong: boolean;
+}
+
 export interface Scene {
   board: TileKind[][];
   threat: Set<string>;
@@ -89,6 +96,7 @@ export interface Scene {
   sanctified: Set<string>;
   targetTiles: Set<string>;
   targetEnemies: Set<string>;
+  intent: IntentView | null;
   floaters: FloaterView[];
   projectile: ProjectileView | null;
   ring: { grid: GridPos; age: number } | null;
@@ -399,6 +407,46 @@ function drawTargetHighlights(ctx: CanvasRenderingContext2D, scene: Scene, camer
   }
 }
 
+function drawIntent(ctx: CanvasRenderingContext2D, intent: IntentView, camera: Camera): void {
+  const level = intent.strong ? 1 : 0.45;
+  if (intent.path.length > 0) {
+    ctx.globalAlpha = 0.4 * level;
+    ctx.strokeStyle = BRASS;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    const start = toScreen(intent.path[0]!);
+    ctx.moveTo(start.x + camera.x, start.y + camera.y);
+    for (const g of intent.path.slice(1)) {
+      const s = toScreen(g);
+      ctx.lineTo(s.x + camera.x, s.y + camera.y);
+    }
+    ctx.stroke();
+  }
+  if (intent.destination) {
+    const s = toScreen(intent.destination);
+    diamondPath(ctx, s.x + camera.x, s.y + camera.y);
+    ctx.globalAlpha = 0.2 * level;
+    ctx.fillStyle = BRASS;
+    ctx.fill();
+    ctx.globalAlpha = 0.9 * level;
+    ctx.strokeStyle = BRASS;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+  if (intent.target) {
+    const s = toScreen(intent.target);
+    diamondPath(ctx, s.x + camera.x, s.y + camera.y);
+    ctx.globalAlpha = 0.9 * level;
+    ctx.strokeStyle = DEEP_RED;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    diamondPath(ctx, s.x + camera.x, s.y + camera.y, TILE_W * 0.45, TILE_H * 0.45);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  ctx.lineWidth = 1;
+}
+
 function drawUnitView(ctx: CanvasRenderingContext2D, unit: UnitView, camera: Camera): void {
   const px = unit.foot.x + camera.x;
   const py = unit.foot.y + camera.y;
@@ -529,6 +577,7 @@ export function drawScene(
     ctx.fill();
     ctx.globalAlpha = 1;
   }
+
   if (scene.showThreat) {
     for (const key of scene.threat) {
       drawThreat(ctx, parseKey(key), camera);
@@ -538,7 +587,10 @@ export function drawScene(
     drawReachable(ctx, parseKey(key), camera);
   }
   drawTargetHighlights(ctx, scene, camera);
-
+  if (scene.intent) {
+    drawIntent(ctx, scene.intent, camera);
+  }
+  
   drawUnits(ctx, scene, camera);
 
   for (const glow of scene.glows) {
