@@ -26,14 +26,22 @@
     </div>
     <div id="panel">
       <div id="hud">
-        <span id="energy">ENERGY 3/3</span>
-        <span id="integrity">INTEGRITY 30/30</span>
+        <span id="energy"></span>
+        <span id="integrity"></span>
         <span id="msg"></span>
         <button id="end-turn" type="button">END TURN</button>
         <button id="threat-toggle" type="button">THREAT: OFF</button>
       </div>
       <div id="hand"></div>
     </div>
+    <div id="deck-viewer" class="hidden">
+      <div id="deck-viewer-box">
+        <p id="deck-viewer-title">DECK MANIFEST</p>
+        <div id="deck-viewer-list"></div>
+        <button id="deck-viewer-close" type="button">CLOSE</button>
+      </div>
+    </div>
+    <div id="card-tip" class="hidden"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

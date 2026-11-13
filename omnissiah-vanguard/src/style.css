@@ -468,4 +468,60 @@ body {
   font-size: 11px;
 }
 
+#deck-viewer-close {
+  background: var(--deep-red);
+  color: var(--bone);
+  border: 1px solid var(--brass);
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 1px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
 
+#deck-viewer-close:hover {
+  background: var(--dark-crimson);
+}
+
+#card-tip {
+  position: fixed;
+  z-index: 20;
+  max-width: 260px;
+  background: var(--near-black);
+  border: 1px solid var(--brass);
+  padding: 6px 8px;
+  pointer-events: none;
+  color: var(--deep-red);
+  font-weight: bold;
+  letter-spacing: 1px;
+  font-size: 11px;  
+}
+
+#card-tip.hidden {
+  display: none;
+}
+
+#card-tip .tip-name {
+  color: var(--bone);
+}
+
+#card-tip .tip-cost {
+  color: var(--signal-green);
+  margin-left: 6px;
+}
+
+#card-tip .tip-kind {
+  display: block;
+  color: var(--brass);
+  font-size: 9px;
+  letter-spacing: 2px;
+  margin: 2px 0;
+}
+
+#card-tip .tip-blurb {
+  margin: 0;
+  color: var(--parchment-dark);
+  font-weight: normal;
+  letter-spacing: 0;
+  font-size: 10px;
+}

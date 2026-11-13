@@ -25,7 +25,7 @@ import {
   type Scene,
 } from './render';
 import { Presenter } from './present';
-import {castHint, castTargeting, type CastTargeting } from './targeting';
+import { castHint, castTargeting, type CastTargeting } from './targeting';
 import { tileKey } from './threat';
 import {
   DECK_CAP,
@@ -41,11 +41,13 @@ import { makeDemoUnits } from './units';
 import {
   flashEnergy,
   setDeckLabel,
+  setDeckViewer,
   setEnergy,
   setHand,
   setIntegrity,
   setRewardCards,
   setMessage,
+  showDeckViewer,
   type HandHandlers,
 } from './ui';
 
@@ -118,7 +120,9 @@ const overlay = requireElement<HTMLElement>('overlay');
 const overlayText = requireElement<HTMLElement>('overlay-text');
 const restartButton = requireElement<HTMLButtonElement>('restart');
 const rewardPanel = requireElement<HTMLElement>('reward');
+const rewardDeck = requireElement<HTMLElement>('reward-deck');
 const declineButton = requireElement<HTMLButtonElement>('decline');
+const setDeckViewerClose = requireElement<HTMLButtonElement>('deck-viewer-close');
 
 const camera: Camera = { x: 0, y: 0};
 let background: HTMLCanvasElement;
@@ -391,6 +395,13 @@ declineButton.addEventListener('click', () => {
   startNextFight();
 });
 
+rewardDeck.addEventListener('click', () => {
+  setDeckViewer(run.deck);
+  showDeckViewer(true);
+});
+
+setDeckViewerClose.addEventListener('click', () => showDeckViewer(false));
+
 resize();
 window.addEventListener('resize', resize);
 new ResizeObserver(fitCamera).observe(canvas);
@@ -435,10 +446,12 @@ interface OmvTestHook {
     hand: string[];
     energy?: number;
     hp?: number;
+    armor?: number;
     facing?: number;
     placements?: { typeId: EnemyTypeId; pos: GridPos }[];
   }): void;
   give(cardId: string): void;
+  rewards(): void;
   read(): unknown;
 }
 
@@ -459,6 +472,7 @@ window.__omvTest = {  //ai helped me write this function fully to test stuff
     combat.hand = [...setup.hand];
     combat.energy = setup.energy ?? ENERGY_PER_TURN;
     combat.player.hp = setup.hp ?? PLAYER_MAX_HP;
+    combat.player.armor = setup.armor ?? 0;
     combat.player.facing = (setup.facing ?? 0) as CombatState['player']['facing'];
     state = combat;
     presenter.reset(state);
@@ -467,6 +481,9 @@ window.__omvTest = {  //ai helped me write this function fully to test stuff
   give(cardId: string) {
     state.hand.push(cardId);
     refreshHud();
+  },
+  rewards() {
+    openRewards();
   },
   read() {
     return {
