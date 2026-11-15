@@ -1,4 +1,10 @@
-export type EnemyTypeId = 'scarab' | 'warrior' | 'immortal' | 'wraith' |'sentinel';
+export type EnemyTypeId =
+  | 'scarab'
+  | 'scarab-half'
+  | 'warrior'
+  | 'immortal'
+  | 'wraith'
+  | 'sentinel';
 
 export type EnemyIdleAxis = 'x' | 'y' | 'none';
 
@@ -21,9 +27,10 @@ export interface EnemyType {
   idle: EnemyIdle;
   shadowScale: number;
   shadowAlpha: number;
+  phases?: boolean;
 }
 
-export const ENEMY_TYPE: Record<EnemyTypeId, EnemyType> = {
+export const ENEMY_TYPES: Record<EnemyTypeId, EnemyType> = {
   scarab: {
     name: 'Scarab Swarm',
     maxHp: 6,
@@ -35,7 +42,33 @@ export const ENEMY_TYPE: Record<EnemyTypeId, EnemyType> = {
     footOffset: 4,
     idle: { axis: 'y', lift: 1, amplitude: 1, cycles: 3 },
     shadowScale: 0.8,
-    shadowAlpha: 0.35
+    shadowAlpha: 0.35,
+  },
+  'scarab-half': {
+    name: 'Scarab Fragment',
+    maxHp: 2,
+    moveRange: 4,
+    attackDamage: 1,
+    attackRange: 1,
+    sprite: 'scarab',
+    scale: 1.0,
+    footOffset: 3,
+    idle: { axis: 'y', lift: 1, amplitude: 1, cycles: 3 },
+    shadowScale: 0.6,
+    shadowAlpha: 0.3,
+  },
+  warrior: {
+    name: 'Necron Warrior',
+    maxHp: 12,
+    moveRange: 2,
+    attackDamage: 4,
+    attackRange: 1,
+    sprite: 'necron-warrior',
+    scale: 2.5,
+    footOffset: 6,
+    idle: { axis: 'x', lift: 0, amplitude: 1, cycles: 1 },
+    shadowScale: 1,
+    shadowAlpha: 0.4,
   },
   immortal: {
     name: 'Immortal',
@@ -43,19 +76,6 @@ export const ENEMY_TYPE: Record<EnemyTypeId, EnemyType> = {
     moveRange: 2,
     attackDamage: 3,
     attackRange: 4,
-    sprite: 'immortal',
-    scale: 2.5,
-    footOffset: 6,
-    idle: { axis: 'x', lift: 0, amplitude: 1, cycles: 1 },
-    shadowScale: 1,
-    shadowAlpha: 0.4,
-  },
-  warrior: {
-    name: 'Necron Warrior',
-    maxHp: 12,
-    moveRange: 2,
-    attackDamage: 2,
-    attackRange: 1,
     sprite: 'immortal',
     scale: 2.5,
     footOffset: 6,
@@ -75,6 +95,7 @@ export const ENEMY_TYPE: Record<EnemyTypeId, EnemyType> = {
     idle: { axis: 'y', lift: 3, amplitude: 2.5, cycles: 1 },
     shadowScale: 0.6,
     shadowAlpha: 0.2,
+    phases: true,
   },
   sentinel: {
     name: 'Canoptek Tomb Sentinel',

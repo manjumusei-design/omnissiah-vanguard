@@ -22,9 +22,11 @@ import {
   createBackground,
   drawScene,
   type Camera,
+  type IntentView,
   type Scene,
 } from './render';
 import { Presenter } from './present';
+import { planEnemyTurn } from './combat';
 import { castHint, castTargeting, type CastTargeting } from './targeting';
 import { tileKey } from './threat';
 import {
@@ -210,6 +212,19 @@ function enemyAt(g: GridPos) {
   return state.enemies.find((e) => e.hp > 0 && e.pos.x === g.x && e.pos.y === g.y);
 }
 
+function intentView(): IntentView | null {
+  if (!hoverGrid || state.turn !== 'player') return null;
+  const enemy = enemyAt(hoverGrid);
+  if (!enemy) return null;
+  const plan = planEnemyTurn(state, enemy);
+  return {
+    path: plan.movePath,
+    destination: plan.movePath.length > 0 ? plan.movePath[plan.movePath.length - 1]! : null,
+    target: plan.attackTarget ? { ...state.player.pos } : null,
+    strong: state.scannedTurns > 0,
+  };
+}
+
 function invalidCast(text: string): void {
   flashEnergy();
   say(text);
@@ -285,6 +300,20 @@ canvas.addEventListener('pointerdown', (e) => {
   setEnergy(state.energy, ENERGY_PER_TURN);
   paths = new Map();
   presenter.play([{ type: 'move', unitId: 'player', path }], state, {}, afterAction);
+});
+
+let hoverGrid: GridPos | null = null;
+
+canvas.addEventListener('pointermove', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  hoverGrid = toGrid({
+    x: e.clientX - rect.left - camera.x,
+    y: e.clientY - rect.top - camera.y,
+  });
+});
+
+canvas.addEventListener('pointerleave', () => {
+  hoverGrid = null;
 });
 
 const handHandlers: HandHandlers = {
@@ -430,6 +459,7 @@ function frame(now: number): void {
     sanctified: new Set(state.sanctified),
     targetTiles: targets.tiles,
     targetEnemies: targets.enemies,
+    intent: intentView(),
     floaters: fx.floaters,
     projectile: fx.projectile,
     ring: fx.ring,

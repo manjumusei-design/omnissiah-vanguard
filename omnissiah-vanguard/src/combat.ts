@@ -37,6 +37,7 @@ export interface CombatState {
   discard: string[];
   scannedTurns: number;
   stasisNext: boolean;
+  nextUnitId: number;
 }
 
 export type CombatEvent =
@@ -46,6 +47,8 @@ export type CombatEvent =
   | { type: 'status'; unitId: string; status: StatusId }
   | { type: 'tile'; key: string; kind: 'sanctify' }
   | { type: 'summon'; unitId: string; pos: GridPos }
+  | { type: 'spawn'; typeId: EnemyTypeId; unitId: string; pos: GridPos }
+  | { type: 'push'; unitId: string; from: GridPos; to: GridPos }
   | { type: 'turnEnd'; turn: CombatState['turn'] };
 
 export const MOVE_RANGE = 3;
@@ -118,8 +121,17 @@ export function losClear(board: TileKind[][], from: GridPos, to: GridPos): boole
   return !isBlocked(board, to.x, to.y);
 }
 
-export function reach(board: TileKind[][], from: GridPos, range: number, occupied: GridPos[]): GridPos[] {
+export function reach(
+  board: TileKind[][],
+  from: GridPos,
+  range: number,
+  occupied: GridPos[],
+  phaseWalls = false,
+): GridPos[] {
   const isOccupied = (p: GridPos) => occupied.some((o) => o.x === p.x && o.y === p.y);
+  const passable = phaseWalls
+    ? (p: GridPos) => board[p.y]?.[p.x] !== undefined
+    : (p: GridPos) => !isBlocked(board, p.x, p.y);
   const reached = new Map<string, GridPos>([[tileKey(from.x, from.y), from]]);
   let frontier: GridPos[] = [from];
   for (let step = 0; step < range && frontier.length > 0; step++) {
@@ -130,7 +142,7 @@ export function reach(board: TileKind[][], from: GridPos, range: number, occupie
           if (dx === 0 && dy === 0) continue;
           const q = { x: p.x + dx, y: p.y + dy };
           const key = tileKey(q.x, q.y);
-          if (reached.has(key) || isBlocked(board, q.x, q.y)) continue;
+          if (reached.has(key) || !passable(q)) continue;
           reached.set(key, q);
           if (!isOccupied(q)) next.push(q);
         }
@@ -179,6 +191,7 @@ export function createCombat(
     discard: [],
     scannedTurns: 0,
     stasisNext: false,
+    nextUnitId: enemies.length + 1,
   };
 }
   
