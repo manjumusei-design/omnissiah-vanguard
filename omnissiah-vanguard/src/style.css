@@ -162,6 +162,15 @@ body {
   background: var(--bone);
 }
 
+#hud button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+#hud button:disabled:hover {
+  background: var(--parchment-dark);
+}
+
 #hand {
   display: flex;
   justify-content: center;

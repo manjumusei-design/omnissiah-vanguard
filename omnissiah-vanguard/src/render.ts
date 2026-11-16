@@ -97,6 +97,7 @@ export interface Scene {
   targetTiles: Set<string>;
   targetEnemies: Set<string>;
   intent: IntentView | null;
+  pendingPath: GridPos[] | null;
   floaters: FloaterView[];
   projectile: ProjectileView | null;
   ring: { grid: GridPos; age: number } | null;
@@ -424,7 +425,7 @@ function drawIntent(ctx: CanvasRenderingContext2D, intent: IntentView, camera: C
   }
   if (intent.destination) {
     const s = toScreen(intent.destination);
-    diamondPath(ctx, s.x + camera.x, s.y + camera.y);
+    diamondPath(ctx, s.x +camera.x, s.y + camera.y);
     ctx.globalAlpha = 0.2 * level;
     ctx.fillStyle = BRASS;
     ctx.fill();
@@ -441,6 +442,26 @@ function drawIntent(ctx: CanvasRenderingContext2D, intent: IntentView, camera: C
     ctx.lineWidth = 2;
     ctx.stroke();
     diamondPath(ctx, s.x + camera.x, s.y + camera.y, TILE_W * 0.45, TILE_H * 0.45);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  ctx.lineWidth = 1;
+}
+
+function drawPendingPath(ctx: CanvasRenderingContext2D, path: GridPos[], camera: Camera): void {
+  const last = path.length - 1;
+  for (const [i, g] of path.entries()) {
+    const s = toScreen(g);
+    const destination = i === last;
+    diamondPath(ctx, s.x + camera.x, s.y + camera.y);
+    if (destination) {
+      ctx.globalAlpha = 0.16;
+      ctx.fillStyle = BONE;
+      ctx.fill();
+    }
+    ctx.globalAlpha = destination ? 1 : 0.6;
+    ctx.strokeStyle = BONE;
+    ctx.lineWidth = destination ? 2: 1;
     ctx.stroke();
   }
   ctx.globalAlpha = 1;
@@ -589,6 +610,9 @@ export function drawScene(
   drawTargetHighlights(ctx, scene, camera);
   if (scene.intent) {
     drawIntent(ctx, scene.intent, camera);
+  }
+  if (scene.pendingPath && scene.pendingPath.length > 0) {
+    drawPendingPath(ctx, scene.pendingPath, camera);
   }
   
   drawUnits(ctx, scene, camera);

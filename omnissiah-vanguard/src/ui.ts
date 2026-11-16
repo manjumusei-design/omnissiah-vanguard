@@ -11,6 +11,7 @@ export interface HandHandlers {
   onLand(cardId: string): void;
   onDrop(cardId: string, canvasX: number, canvasY: number): void;
   onSelect(cardId: string): void;
+  canBegin?(cardId: string): boolean;
 }
 
 export function energyLabel(current: number, max: number): string {
@@ -297,6 +298,7 @@ function attachCard(
 
   el.addEventListener('pointerdown', (ev) => {
     if (ev.button !== 0) return;
+    if (handlers.canBegin && !handlers.canBegin(cardId)) return;
     ev.preventDefault();
     hideTip();
     el.setPointerCapture(ev.pointerId);
