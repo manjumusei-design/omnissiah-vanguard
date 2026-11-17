@@ -614,7 +614,7 @@ export function drawScene(
   if (scene.pendingPath && scene.pendingPath.length > 0) {
     drawPendingPath(ctx, scene.pendingPath, camera);
   }
-  
+
   drawUnits(ctx, scene, camera);
 
   for (const glow of scene.glows) {

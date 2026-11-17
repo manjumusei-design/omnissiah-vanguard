@@ -24,9 +24,10 @@ import {
   type Camera,
   type IntentView,
   type Scene,
-} from './render';
-import { Presenter } from './present';
+} from './render'
+import { nextFloaterPos, Presenter } from './present';
 import { planEnemyTurn } from './combat';
+import { blocksNewAction, canConfirm, pendingStatus, type PendingAction } from './pending';
 import { castHint, castTargeting, type CastTargeting } from './targeting';
 import { tileKey } from './threat';
 import {
@@ -118,6 +119,8 @@ const ctx: CanvasRenderingContext2D = ctxOrNull;
 
 const threatButton = requireElement<HTMLButtonElement>('threat-toggle');
 const endTurnButton = requireElement<HTMLButtonElement>('end-turn');
+const confirmButton = requireElement<HTMLButtonElement>('confirm');
+const cancelButton = requireElement<HTMLButtonElement>('cancel');
 const overlay = requireElement<HTMLElement>('overlay');
 const overlayText = requireElement<HTMLElement>('overlay-text');
 const restartButton = requireElement<HTMLButtonElement>('restart');
@@ -152,6 +155,8 @@ const presenter = new Presenter();
 presenter.snap(state);
 
 let selectedCard: string | null = null;
+let pending: PendingAction | null = null;
+let confirmedOnce = false;
 let paths = new Map<string, GridPos[]>();
 let threat = new Set<string>();
 let showThreat = false;
@@ -186,6 +191,69 @@ function say(text: string): void {
   setMessage(text);
   window.clearTimeout(msgTimer);
   if (text) msgTimer = window.setTimeout(() => setMessage(''), MSG_SECONDS * 1000);
+}
+
+function refreshPendingIo(): void {
+  confirmButton.disabled = pending === null;
+  cancelButton.disabled = pending === null;
+  endTurnButton.disabled = pending !== null;
+  window.clearTimeout(msgTimer);
+  setMessage(pending
+    ? pendingStatus(pending, (id) => cardDef(id).name, !confirmedOnce)
+    : '');
+}
+
+function clearPending(): void {
+  pending = null;
+  refreshPendingUi();
+}
+
+function stageMove(path: GridPos[]): void {
+  pending = { kind: 'move', path };
+  refreshPendingUi();
+}
+
+function stageCast(
+  cardId: string,
+  targetUnitId: string | null,
+  targetTile: GridPos | null,
+): void {
+  pending = { kind: 'cast', cardId, target  UnitId, targetTile };
+  selectedCard = cardId;
+  refreshPendingUi();
+}
+
+function cancelPending(text = ''): void {
+  if (!pending) return;
+  clearPending();
+  selectedCard = null;
+  refreshHud();
+  say(text);
+}
+
+function confirmPending(): void {
+  if (!pending || !canAct()) return;
+  const action = pending;
+  if (!canConfirm(action, state.energy, action.kind === 'cast' ? CARDS.find((c) => c.id === action.cardId) : undefined)) {
+    cancelPending('NOT ENOUGH ENERGY');
+    return;
+  }
+  confirmedOnce = true;
+  clearPending();
+  if (action.kind === 'move') {
+    const next = movePlayer(state, action.path);
+    if (next === state) {
+      refreshHud();
+      return;
+    }
+    state = next;
+    setEnergy(state.energy,ENERGY_PER_TURN);
+    paths = new Map();
+    presenter.play([{ type: 'move', unitId: 'player', path: action.path }], state, {}, afterAction);
+    return;
+  }
+  selectedCard = null;
+  cast(action.cardId, action.targetUnitId, action.targetTile);
 }
 
 function showOverlay(text: string): void {
