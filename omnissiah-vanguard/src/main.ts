@@ -327,15 +327,15 @@ function resolveCastClick(cardId: string, g: GridPos, fromDrop: boolean): void {
   const key = tileKey(g.x, g.y);
   const enemy = enemyAt(g);
   if (enemy && targets.enemies.has(key)) {
-    cast(cardId, enemy.id, g);
+    stageCast(cardId, enemy.id, g);
     return;
   }
   if (targets.tiles.has(key)) {
-    cast(cardId, null, g);
+    stageCast(cardId, null, g);
     return;
   }
   if (targets.tiles.size === 0 && targets.enemies.size === 0) {
-    cast(cardId, null, null);
+    stageCast(cardId, null, null);
     return;
   }
   invalidCast(castHint(cardId));
@@ -351,7 +351,7 @@ canvas.addEventListener('pointerdown', (e) => {
     x: e.clientX - rect.left - camera.x,
     y: e.clientY - rect.top - camera.y,
   });
-  if (!canAct()) return;
+  if (!canAct() || blocksNewAction(pending)) return;
   if (selectedCard) {
     resolveCastClick(selectedCard, g, false);
     return;
@@ -362,12 +362,7 @@ canvas.addEventListener('pointerdown', (e) => {
     invalidCast('NOT ENOUGH ENERGY');
     return;
   }
-  const next = movePlayer(state, path);
-  if (next === state) return;
-  state = next;
-  setEnergy(state.energy, ENERGY_PER_TURN);
-  paths = new Map();
-  presenter.play([{ type: 'move', unitId: 'player', path }], state, {}, afterAction);
+  stageMove(path);
 });
 
 let hoverGrid: GridPos | null = null;
@@ -385,29 +380,33 @@ canvas.addEventListener('pointerleave', () => {
 });
 
 const handHandlers: HandHandlers = {
+  canBegin() {
+    return canAct() && !blocksNewAction(pending);
+  },
   onLift(cardId) {
-    if (!canAct()) return;
+    if (!canAct() || blocksNewAction(pending)) return;
     selectedCard = cardId;
   },
   onLand(cardId) {
+    if (pending?.kind === 'cast' && pending.cardId === cardId) return;
     if (selectedCard === cardId) {
       selectedCard = null;
       refreshHud();
     }
   },
   onDrop(cardId, canvasX, canvasY) {
-    if (!canAct()) return;
+    if (!canAct() || blocksNewAction(pending)) return;
     resolveCastClick(cardId, toGrid({ x: canvasX - camera.x, y: canvasY - camera.y }), true);
   },
   onSelect(cardId) {
-    if (!canAct()) return;
+    if (!canAct() || blocksNewAction(pending)) return;
     selectedCard = selectedCard === cardId ? null : cardId;
     refreshHud();
   },
 };
 
 endTurnButton.addEventListener('click', () => {
-  if (!canAct()) return;
+  if (!canAct() || blocksNewAction(pending)) return;
   selectedCard = null;
   say('');
   const ended = endPlayerTurn(state);
@@ -439,9 +438,18 @@ threatButton.addEventListener('click', () => {
   threatButton.textContent = showThreat ? 'THREAT: ON' : 'THREAT: OFF';
 });
 
+confirmButton.addEventListener('click', () => confirmPending());
+cancelButton.addEventListener('click', () => cancelPending());
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') cancelPending();
+  else if (e.key === 'Enter') confirmPending();
+});
+
 function startNextFight(): void {
   state = freshState();
   selectedCard = null;
+  clearPending();
   presenter.reset(state);
   overlay.classList.add('hidden');
   rewardPanel.classList.add('hidden');
@@ -528,6 +536,7 @@ function frame(now: number): void {
     targetTiles: targets.tiles,
     targetEnemies: targets.enemies,
     intent: intentView(),
+    pendingPath: pending?.kind === 'move' ? pending.path: null,
     floaters: fx.floaters,
     projectile: fx.projectile,
     ring: fx.ring,
@@ -573,6 +582,8 @@ window.__omvTest = {  //ai helped me write this function fully to test stuff
     combat.player.armor = setup.armor ?? 0;
     combat.player.facing = (setup.facing ?? 0) as CombatState['player']['facing'];
     state = combat;
+    selectedCard = null;
+    clearPending();
     presenter.reset(state);
     refreshHud();
   },
@@ -606,6 +617,20 @@ window.__omvTest = {  //ai helped me write this function fully to test stuff
       turrets: state.turrets.map((t) => ({ id: t.id, pos: t.pos })),
       rewardHidden: rewardPanel.classList.contains('hidden'),
       overlayText: overlay.classList.contains('hidden') ? null : overlayText.textContent,
+      pending: pending === null
+        ? null
+        : {
+            kind: pending.kind,
+            path: pending.kind === 'move' ? pending.path : null,
+            cardId: pending.kind === 'cast' ? pending.cardId : null,
+            targetUnitId: pending.kind === 'cast' ? pending.targetUnitId : null,
+            targetTile: pending.kind === 'cast' ? pending.targetTile : null,
+          },
+      message: document.getElementById('msg')?.textContent ?? null,
+      confirmDisabled: confirmButton.disabled,
+      cancelDisabled: cancelButton.disabled,
+      endTurnDisabled: endTurnButton.disabled,
+      selectedCard,
     };
   },
 };
