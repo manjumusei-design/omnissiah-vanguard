@@ -620,7 +620,7 @@ window.__omvTest = {  //ai helped me write this function fully to test stuff
       pending: pending === null
         ? null
         : {
-            kind: pending.kind,
+            kind: pending.kxind,
             path: pending.kind === 'move' ? pending.path : null,
             cardId: pending.kind === 'cast' ? pending.cardId : null,
             targetUnitId: pending.kind === 'cast' ? pending.targetUnitId : null,

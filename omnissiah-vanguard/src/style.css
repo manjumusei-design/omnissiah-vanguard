@@ -1,3 +1,11 @@
+@font-face {
+  font-family: 'Pirata One';
+  src: local('Pirata One'), url('/fonts/pirata-one.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   --near-black: #0d0b0e;
   --void-dark: #1a1519;
@@ -15,6 +23,8 @@
   --pale-green: #a5f2be;
   --tomb-teal: #33564f;
   --white: #f5f3ec;
+  
+  --readout-ink: #e2d5b1;
 }
 
 * {
@@ -71,6 +81,15 @@ body {
   min-width: 70px;
 }
 
+#energy .energy-text {
+  color: var(--signal-green);
+  font-weight: bold;
+  letter-spacing: 1px;
+  font-size: 11px;
+  margin-right: 4px;
+  white-space: nowrap;
+}
+
 #energy .pip {
   position: relative;
   width: 12px;
@@ -83,10 +102,10 @@ body {
 
 #energy .pip::after {
   content: "";
-  position: absoulute;
+  position: absolute;
   inset: 3px;
   border-radius: 50%;
-  background: varr(--void-dark);
+  background: var(--void-dark);
 }
 
 #energy .pip.spent {
@@ -98,7 +117,7 @@ body {
   box-shadow: inset 0 0 0 1px var(--near-black), 0 0 5px var(--brass);
 }
 
-#energy.flash .pip.lit{
+#energy.flash .pip.lit {
   animation: pip-flash 0.35s linear;
 }
 
@@ -121,6 +140,24 @@ body {
   padding: 2px;
   background: var(--dark-crimson);
   border: 1px solid var(--brass);
+  position: relative;
+}
+
+#integrity .bar::before {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--deep-red), var(--deep-red)) left 0 top 0 / 9px 2px,
+    linear-gradient(var(--deep-red), var(--deep-red)) left 0 top 0 / 2px 9px,
+    linear-gradient(var(--deep-red), var(--deep-red)) right 0 top 0 / 9px 2px,
+    linear-gradient(var(--deep-red), var(--deep-red)) right 0 top 0 / 2px 9px,
+    linear-gradient(var(--deep-red), var(--deep-red)) left 0 bottom 0 / 9px 2px,
+    linear-gradient(var(--deep-red), var(--deep-red)) left 0 bottom 0 / 2px 9px,
+    linear-gradient(var(--deep-red), var(--deep-red)) right 0 bottom 0 / 9px 2px,
+    linear-gradient(var(--deep-red), var(--deep-red)) right 0 bottom 0 / 2px 9px;
+  background-repeat: no-repeat;
 }
 
 #integrity .seg {
@@ -162,6 +199,22 @@ body {
   background: var(--bone);
 }
 
+#end-turn {
+  position: relative;
+  padding-left: 18px;
+}
+
+#end-turn::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  background: repeating-linear-gradient(45deg, var(--brass) 0 4px, var(--near-black) 4px 8px);
+  box-shadow: inset -1px 0 0 var(--near-black);
+}
+
 #hud button:disabled {
   opacity: 0.45;
   cursor: default;
@@ -181,18 +234,36 @@ body {
 .card {
   position: relative;
   width: 168px;
-  background: var(--bone);
-  color: var(--near-black);
-  border: 12px solid transparent;
-  border-image: url('/art/processed/card-frame.png') 30 fill / 12px stretch;
-  padding: 2px 6px 6px;
+  background: var(--gunmetal);
+  color: var(--bone);
+  border: 1px solid var(--near-black);
+  border-radius: 3px;
+  box-shadow:
+    inset 0 1px 0 var(--steel-light),
+    inset 1px 0 0 var(--slate-dark),
+    inset 0 -1px 0 var(--near-black),
+    inset -1px 0 0 var(--slate-dark),
+    0 2px 6px color-mix(in srgb, var(--near-black) 60%, transparent);
+  padding: 4px 9px 8px;
   cursor: grab;
   user-select: none;
   touch-action: none;
 }
 
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 7px 7px, var(--steel-light) 0 1.2px, var(--near-black) 1.4px 2px, transparent 2.2px),
+    radial-gradient(circle at calc(100% - 7px) 7px, var(--steel-light) 0 1.2px, var(--near-black) 1.4px 2px, transparent 2.2px),
+    radial-gradient(circle at 7px calc(100% - 7px), var(--steel-light) 0 1.2px, var(--near-black) 1.4px 2px, transparent 2.2px),
+    radial-gradient(circle at calc(100% - 7px) calc(100% - 7px), var(--steel-light) 0 1.2px, var(--near-black) 1.4px 2px, transparent 2.2px);
+}
+
 .card::after {
-  content: '';
+  content: "";
   position: absolute;
   left: 0;
   top: 0;
@@ -219,60 +290,138 @@ body {
   opacity: 0.45;
 }
 
-.card .art {
+.card .namebar {
   display: block;
-  width: 120px;
-  height: 90px;
-  margin: 0 auto 4px;
-  background-color: var(--parchment-dark);
-  background-size: 100% 100%;
-  background-repeat: no-repeat;
-  image-rendering: pixelated;
+  position: relative;
+  background: var(--void-dark);
+  border: 1px solid var(--near-black);
+  box-shadow: inset 0 1px 0 var(--slate-dark);
+  padding: 1px 22px 2px;
+  margin: 0 0 3px;
 }
 
 .card .name {
   display: block;
   text-align: center;
-  text-transform: uppercase;
-  font-variant: small-caps;
-  font-weight: bold;
-  font-size: 12px;
-  border-bottom: 1px solid var(--parchment-dark);
+  font-family: 'Pirata One', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.15;
+  letter-spacing: 1px;
+  color: var(--brass);
+  text-shadow: 0 1px 0 var(--near-black);
 }
 
-.card.kind {
-  display: block;
-  text-align: center;
-  font-size: 9px;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  color: var(--deep-red);
-  margin: 2px 0 3px;
+.card .namebar.flesh {
+  padding: 1px 48px 2px 10px;
 }
 
 .card .cost {
-  display: inline-block;
-  border: 1px solid var(--dark-crimson);
-  background: var(--parchment-dark);
-  padding: 0 5px;
+  position: absolute;
+  top: 50%;
+  right: -13px;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(circle at 50% 50%, transparent 0 5px, var(--dark-crimson) 5.5px 6.5px, transparent 7px),
+    var(--brass);
+  color: var(--near-black);
+  border: 1px solid var(--near-black);
+  box-shadow: 0 1px 2px var(--near-black);
   font-weight: bold;
+  font-size: 11px;
 }
 
 .card .hpcost {
-  display: inline-block;
-  margin-left: 4px;
-  border: 1px solid var(--deep-red);
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  border: 1px solid var(--near-black);
   background: var(--deep-red);
   color: var(--bone);
-  padding: 0 4px;
+  padding: 0 3px;
   font-weight: bold;
+  font-size: 9px;
+}
+
+.card .kind {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-size: 9px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--steel-light);
+  margin: 0 0 4px;
+}
+
+.card .sigil {
+  width: 6px;
+  height: 6px;
+  transform: rotate(45deg);
+  background: var(--doctrine-color, var(--ash-gray));
+  box-shadow: 0 0 0 1px var(--near-black);
+}
+
+.card .art {
+  position: relative;
+  display: block;
+  width: 120px;
+  height: 90px;
+  margin: 0 auto 6px;
+  background-color: var(--parchment-dark);
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  border: 1px solid var(--near-black);
+  box-shadow: inset 0 0 0 1px var(--slate-dark), 0 1px 2px var(--near-black);
+}
+
+
+.card .seal {
+  position: absolute;
+  left: 22px;
+  top: 80px;
+  width: 15px;
+  height: 36px;
+  background: var(--parchment-dark);
+  box-shadow: inset 0 0 0 1px var(--parchment-dark), 0 1px 2px var(--near-black);
+  clip-path: polygon(0 0, 100% 0, 100% 84%, 76% 100%, 54% 86%, 28% 100%, 0 86%);
+  z-index: 2;
+}
+
+.card .seal::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -6px;
+  transform: translateX(-50%);
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  border: 1px solid var(--near-black);
+  background:
+    radial-gradient(circle at 50% 50%, var(--dark-crimson) 0 2.4px, transparent 2.8px),
+    repeating-conic-gradient(var(--deep-red) 0 38deg, var(--dark-crimson) 38deg 60deg);
+  box-shadow: 0 1px 2px var(--near-black);
 }
 
 .card .blurb {
-  margin: 3px 0 0;
+  margin: 4px 0 0;
+  padding: 4px 6px;
+  min-height: 44px;
   font-size: 10px;
-  line-height: 1.3;
-  color: var(--void-dark);
+  line-height: 1.35;
+  background: var(--void-dark);
+  box-shadow: inset 0 0 0 1px var(--near-black), inset 0 2px 4px var(--near-black);
+  color: var(--readout-ink);
+  text-shadow: 0 0 5px color-mix(in srgb, var(--brass) 50%, transparent);
 }
 
 .card.ghost {
@@ -284,7 +433,7 @@ body {
 }
 
 #overlay {
-  position: absoulute;
+  position: absolute;
   inset: 0;
   display: flex;
   align-items: center;
@@ -297,7 +446,7 @@ body {
 
 #overlay::before {
   content: "";
-  position: absoulute;
+  position: absolute;
   inset: 0;
   background: var(--near-black);
   opacity: 0.78;
@@ -306,7 +455,7 @@ body {
 #overlay-box {
   position: relative;
   background: var(--void-dark);
-  border: 2px solid var (--brass);
+  border: 2px solid var(--brass);
   padding: 24px 36px;
   text-align: center;
 }
@@ -319,7 +468,7 @@ body {
 
 #overlay button {
   background: var(--deep-red);
-  color: var (--bone);
+  color: var(--bone);
   border: 1px solid var(--brass);
   font-family: inherit;
   font-size: 11px;
@@ -333,7 +482,7 @@ body {
 }
 
 #reward {
-  position: absoulute;
+  position: absolute;
   inset: 0;
   display: flex;
   align-items: center;
@@ -346,7 +495,7 @@ body {
 
 #reward::before {
   content: "";
-  position: absoulute;
+  position: absolute;
   inset: 0;
   background: var(--near-black);
   opacity: 0.78;
@@ -380,7 +529,7 @@ body {
 
 #reward-cards {
   display: flex;
-  gap: 14;
+  gap: 14px;
   justify-content: center;
   margin-bottom: 14px;
 }
@@ -409,7 +558,7 @@ body {
   background: var(--deep-red);
   color: var(--bone);
   border: 1px solid var(--brass);
-  font-family: inherent;
+  font-family: inherit;
   font-size: 11px;
   letter-spacing: 1px;
   padding: 6px 14px;
@@ -455,9 +604,9 @@ body {
   font-weight: bold;
 }
 
-#deck-viwer-list {
+#deck-viewer-list {
   max-height: 50vh;
-  min-width: 200px;
+  min-width: 220px;
   overflow-y: auto;
   text-align: left;
   margin-bottom: 14px;
@@ -503,7 +652,7 @@ body {
   color: var(--deep-red);
   font-weight: bold;
   letter-spacing: 1px;
-  font-size: 11px;  
+  font-size: 11px;
 }
 
 #card-tip.hidden {

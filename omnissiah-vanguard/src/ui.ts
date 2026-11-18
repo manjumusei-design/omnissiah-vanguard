@@ -55,6 +55,14 @@ export function doctrineColor(doctrine: DoctrineId | null): string {
   return doctrine ? DOCTRINE_COLOR_VARS[doctrine] : 'var(--ash-gray)';
 }
 
+export function cardKindLabel(card: CardDef): string {
+  return doctrineOf(card.id)?.toUpperCase() ?? card.kind;
+}
+
+export function cardHasSeal(card: CardDef): boolean {
+  return card.kind === 'Benediction' || (card.hpCost ?? 0) > 0;
+}
+
 export function setEnergy(current: number, max: number): void {
   const el = requireElement('energy');
   const pips = energyPips(current, max);
