@@ -41,7 +41,6 @@ export const PARTS: Record<PartName, PartDef> = {
   weaponArm: { anchorX: 16, anchorY: 31, flipForLeft: true, image: null },
 };
 
-
 const LEGS_TOP = -27;
 const TORSO_OVERLAP = 4;
 const HEAD_OVERLAP = 2;
@@ -55,7 +54,6 @@ const WEAPON_ATTACH = { x: 11, y: WAIST_Y - (31 - WEAPON_ROOT_IMG.y) };
 const DENDRITE_ROOT_IMG = { x: 10, y: 30 };
 const DENDRITE_ATTACH_L = { x: -10, y: SHOULDER_Y };
 const DENDRITE_ATTACH_R = { x: 10, y: SHOULDER_Y };
-
 
 export function drawPixelRect(
   ctx: CanvasRenderingContext2D,
@@ -372,6 +370,31 @@ function drawDendrites(ctx: CanvasRenderingContext2D, phase: number): void {
   );
 }
 
+const BOB_AMPLITUDE_PX = 1.5;
+const WOBBLE_RADIANS = (2 * Math.PI) / 180;
+
+export function prefersReducedMotion(): boolean {
+  return typeof window !== 'undefined'
+    && typeof window.matchMedia == 'function'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+export interface Gait {
+  bobPx: number,
+  wobbleRad: number;
+  legFrame: 0 | 1;
+}
+
+export function gaitOffset(phase: number, moving: boolean, reducedMotion: boolean): Gait {
+  if (!moving || reducedMotion) return { bobPx: 0, wobbleRad: 0, legFrame: 1 };
+  const wave = Math.sin(phase * Math.PI * 2);
+  return {
+    bobPx: -wave * BOB_AMPLITUDE_PX,
+    wobbleRad: wave * WOBBLE_RADIANS,
+    legFrame: wave >= 0 ? 0 : 1,
+  };
+}
+
 export function drawRig(
   ctx: CanvasRenderingContext2D,
   footX: number,
@@ -382,28 +405,29 @@ export function drawRig(
 ): void {
   if (!rig) throw new Error('rig not loaded');
   const anchor = PARTS.head;
-  const legFrame = moving ? Math.floor(phase * 2) % 2 : 1;
-  const bob = moving && legFrame === 0 ? -1 : 0;
+  const gait = gaitOffset(phase, moving, prefersReducedMotion());
+  const bob = gait.bobPx / PRIEST_SCALE;
   const sway = Math.round(Math.sin(phase * Math.PI * 2));
   const pose: Pose = facing === 0 ? 'front' : facing === 2 ? 'back' : 'side';
 
   ctx.save();
   ctx.translate(Math.round(footX), Math.round(footY));
+  ctx.rotate(gait.wobbleRad);
   if (facing === 3) ctx.scale(-1, 1);
-
+  
   const dendritesAfterBody = pose === 'back';
   if (!dendritesAfterBody) drawDendrites(ctx, phase);
 
   const legsImage = PARTS.legs.image;
   if (legsImage) {
-    drawArt(ctx, legsImage, PARTS.legs.anchorX, PARTS.legs.anchorY, 0, 0, PRIEST_SCALE, legFrame === 0);
+    drawArt(ctx, legsImage, PARTS.legs.anchorX, PARTS.legs.anchorY, 0, 0, PRIEST_SCALE);
   } else {
-    drawPart(ctx, rig.legs[legFrame]!, PARTS.legs, 0, 0);
+    drawPart(ctx, rig.legs[gait.legFrame]!, PARTS.legs, 0, 0);
   }
 
   const torsoImage = PARTS.torso.image;
   if (torsoImage) {
-    drawArt(ctx, torsoImage, PARTS.torso.anchorX, PARTS.torso.anchorY, sway, bob - TORSO_LIFT, PRIEST_SCALE);
+    drawArt(ctx, torsoImage, PARTS.torso.anchorX, PARTS.torso.anchorY, sway, bob + TORSO_BOTTOM, PRIEST_SCALE);
   } else {
     drawPart(ctx, rig.robes, PARTS.robes, sway, bob);
     drawPart(ctx, rig.torso[pose], PARTS.torso, 0, bob);
@@ -411,7 +435,7 @@ export function drawRig(
 
   const headImage = PARTS.head.image;
   if (headImage) {
-    drawArt(ctx, headImage, PARTS.head.anchorX, PARTS.head.anchorY, 0, bob - HEAD_LIFT, PRIEST_SCALE);
+    drawArt(ctx, headImage, PARTS.head.anchorX, PARTS.head.anchorY, 0, bob + HEAD_BOTTOM, PRIEST_SCALE);
   } else {
     drawPart(ctx, rig.head[pose], anchor, 0, bob);
   }
