@@ -41,13 +41,21 @@ export const PARTS: Record<PartName, PartDef> = {
   weaponArm: { anchorX: 16, anchorY: 31, flipForLeft: true, image: null },
 };
 
-const TORSO_LIFT = 28;
-const HEAD_LIFT = 56;
-const DENDRITE_ROOT_IMG = { x: 17, y: 2 };
-const DENDRITE_ATTACH_L = { x: -12, y: -54 };
-const DENDRITE_ATTACH_R = { x: 11, y: -54 };
-const WEAPON_ROOT_IMG = { x: 4, y: 2 };
-const WEAPON_ATTACH = { x: 9, y: -54 };
+
+const LEGS_TOP = -27;
+const TORSO_OVERLAP = 4;
+const HEAD_OVERLAP = 2;
+const TORSO_BOTTOM = LEGS_TOP + TORSO_OVERLAP - 1;
+const TORSO_TOP = TORSO_BOTTOM - 29;
+const HEAD_BOTTOM = TORSO_TOP + HEAD_OVERLAP;
+const SHOULDER_Y = TORSO_TOP + 3;
+const WEAPON_ROOT_IMG = { x: 5, y: 19 };
+const WAIST_Y = -32;
+const WEAPON_ATTACH = { x: 11, y: WAIST_Y - (31 - WEAPON_ROOT_IMG.y) };
+const DENDRITE_ROOT_IMG = { x: 10, y: 30 };
+const DENDRITE_ATTACH_L = { x: -10, y: SHOULDER_Y };
+const DENDRITE_ATTACH_R = { x: 10, y: SHOULDER_Y };
+
 
 export function drawPixelRect(
   ctx: CanvasRenderingContext2D,
